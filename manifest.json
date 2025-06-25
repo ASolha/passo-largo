@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Passo Largo",
+  "version": "1.0",
+  "description": "Sistema de mensagens rápidas organizadas por categorias para o Mercado Livre",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.mercadolivre.com.br/*",
+    "*://*.mercadolibre.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.mercadolivre.com.br/*",
+        "*://*.mercadolibre.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Configurar Mensagens Rápidas"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mensagens Rápidas ML</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .header {
+      padding: 20px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+    }
+    
+    .header h1 {
+      font-size: 20px;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    
+    .header p {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    
+    .content {
+      padding: 20px;
+    }
+    
+    .feature {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .feature-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .feature-desc {
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+    
+    .status {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    
+    .status.active {
+      background: rgba(76, 175, 80, 0.3);
+      border: 1px solid rgba(76, 175, 80, 0.5);
+    }
+    
+    .status.inactive {
+      background: rgba(244, 67, 54, 0.3);
+      border: 1px solid rgba(244, 67, 54, 0.5);
+    }
+    
+    .status-text {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      text-align: center;
+      color: white;
+    }
+    
+    .btn-primary {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .btn-primary:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .footer {
+      padding: 15px 20px;
+      background: rgba(0, 0, 0, 0.1);
+      text-align: center;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    
+    .version {
+      opacity: 0.6;
+      margin-top: 5px;
+    }
+
+    .emoji {
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>💬 Mensagens Rápidas</h1>
+    <p>Para Mercado Livre</p>
+  </div>
+  
+  <div class="content">
+    <div id="status" class="status">
+      <div class="status-text">🔍 Verificando página...</div>
+    </div>
+    
+    <div class="feature">
+      <div class="feature-title">
+        <span class="emoji">🚀</span>
+        <span>Acesso Rápido</span>
+      </div>
+      <div class="feature-desc">
+        Botão flutuante sempre visível nas páginas do Mercado Livre para acesso instantâneo.
+      </div>
+    </div>
+    
+    <div class="feature">
+      <div class="feature-title">
+        <span class="emoji">📋</span>
+        <span>Mensagens Organizadas</span>
+      </div>
+      <div class="feature-desc">
+        Categorias e subcategorias personalizáveis com mensagens prontas para diferentes situações.
+      </div>
+    </div>
+    
+    <div class="feature">
+      <div class="feature-title">
+        <span class="emoji">✏️</span>
+        <span>Editor Completo</span>
+      </div>
+      <div class="feature-desc">
+        Crie, edite e organize suas categorias, subcategorias e mensagens de forma simples.
+      </div>
+    </div>
+    
+    <div class="actions">
+      <button id="openML" class="btn btn-primary">Abrir Mercado Livre</button>
+      <button id="openEditor" class="btn btn-secondary">Editar Mensagens</button>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <div>Mensagens Rápidas ML</div>
+    <div class="version">Versão 1.1.0</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

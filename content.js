@@ -1,0 +1,1175 @@
+// Sistema de armazenamento das mensagens
+// Sistema de armazenamento das mensagens
+let messageData = {
+  categories: {}
+};
+
+// Posição do botão
+let buttonPosition = {
+  bottom: '20px',
+  right: '20px',
+  top: 'auto',
+  left: 'auto'
+};
+
+// Variáveis para controle do drag (apenas no editor)
+let draggedItem = null;
+let draggedSubItem = null;
+let draggedOverItem = null;
+let draggedOverSubItem = null;
+
+// Carrega dados salvos
+function loadData() {
+  const saved = localStorage.getItem('mr-messages');
+  if (saved) {
+    try {
+      messageData = JSON.parse(saved);
+    } catch (e) {
+      console.error('Erro ao carregar dados:', e);
+    }
+  }
+
+  // Carrega posição do botão
+  const savedPosition = localStorage.getItem('mr-button-position');
+  if (savedPosition) {
+    try {
+      buttonPosition = JSON.parse(savedPosition);
+    } catch (e) {
+      console.error('Erro ao carregar posição do botão:', e);
+    }
+  }
+}
+
+// Salva dados
+function saveData() {
+  localStorage.setItem('mr-messages', JSON.stringify(messageData));
+}
+
+// Salva posição do botão
+function saveButtonPosition(top, left) {
+  const windowWidth = window.innerWidth;
+  const windowHeight = window.innerHeight;
+
+  const distanceToRight = windowWidth - left;
+  const distanceToBottom = windowHeight - top;
+
+  if (distanceToRight < windowWidth / 2) {
+    buttonPosition.right = distanceToRight + 'px';
+    buttonPosition.left = 'auto';
+  } else {
+    buttonPosition.left = left + 'px';
+    buttonPosition.right = 'auto';
+  }
+
+  if (distanceToBottom < windowHeight / 2) {
+    buttonPosition.bottom = distanceToBottom + 'px';
+    buttonPosition.top = 'auto';
+  } else {
+    buttonPosition.top = top + 'px';
+    buttonPosition.bottom = 'auto';
+  }
+
+  localStorage.setItem('mr-button-position', JSON.stringify(buttonPosition));
+}
+
+function renderButton() {
+  if (document.getElementById('mr-button')) return;
+
+  loadData();
+
+  const btn = document.createElement('div');
+  btn.id = 'mr-button';
+  btn.textContent = '✉️';
+
+  btn.style.cssText = `
+    position: fixed;
+    top: ${buttonPosition.top};
+    left: ${buttonPosition.left};
+    bottom: ${buttonPosition.bottom};
+    right: ${buttonPosition.right};
+    width: 50px;
+    height: 50px;
+    background: #007bff;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    user-select: none;
+  `;
+
+  const drag = document.createElement('div');
+  drag.textContent = '⋮';
+  drag.style.cssText = `
+    cursor: move;
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    background: #ccc;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 12px;
+    color: #666;
+  `;
+  drag.title = 'Arraste para mover';
+  btn.appendChild(drag);
+
+  let offsetX = 0,
+    offsetY = 0,
+    isDragging = false;
+  drag.onmousedown = (e) => {
+    e.stopPropagation();
+    isDragging = true;
+    offsetX = e.clientX - btn.getBoundingClientRect().left;
+    offsetY = e.clientY - btn.getBoundingClientRect().top;
+
+    document.onmousemove = (e) => {
+      if (!isDragging) return;
+
+      const newLeft = e.clientX - offsetX;
+      const newTop = e.clientY - offsetY;
+
+      btn.style.top = newTop + 'px';
+      btn.style.left = newLeft + 'px';
+      btn.style.bottom = 'auto';
+      btn.style.right = 'auto';
+    };
+
+    document.onmouseup = (e) => {
+      if (isDragging) {
+        isDragging = false;
+        const rect = btn.getBoundingClientRect();
+        saveButtonPosition(rect.top, rect.left);
+
+        const menu = document.getElementById('mr-menu');
+        if (menu && menu.style.display === 'block') {
+          positionMenu();
+        }
+      }
+      document.onmousemove = null;
+      document.onmouseup = null;
+    };
+  };
+
+  btn.onclick = (e) => {
+    if (!isDragging) {
+      e.stopPropagation();
+      toggleMenu();
+    }
+  };
+
+  document.body.appendChild(btn);
+  renderMenu();
+  renderEditor();
+}
+
+function renderMenu() {
+  if (document.getElementById('mr-menu')) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'mr-menu';
+  menu.style.cssText = `
+    position: fixed;
+    width: 300px;
+    /* Removed max-height */
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    display: none;
+    z-index: 10001;
+    /* Removed overflow-y: auto; */
+  `;
+
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  `;
+
+  const title = document.createElement('strong');
+  title.textContent = 'Mensagens Rápidas';
+  title.style.color = '#333';
+
+  const editBtn = document.createElement('button');
+  editBtn.textContent = '⚙️ Editar';
+  editBtn.style.cssText = `
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  `;
+  editBtn.onclick = () => openEditor();
+
+  header.appendChild(title);
+  header.appendChild(editBtn);
+  menu.appendChild(header);
+
+  const content = document.createElement('div');
+  content.id = 'mr-menu-content';
+  content.style.padding = '8px';
+  menu.appendChild(content);
+
+  document.body.appendChild(menu);
+  updateMenuContent();
+}
+
+function positionMenu() {
+  const menu = document.getElementById('mr-menu');
+  const btn = document.getElementById('mr-button');
+
+  if (!menu || !btn) return;
+
+  const btnRect = btn.getBoundingClientRect();
+  const menuWidth = 300;
+  // Use scrollHeight to get the full content height
+  const menuHeight = menu.scrollHeight;
+  const windowWidth = window.innerWidth;
+  const windowHeight = window.innerHeight;
+
+  let left, top;
+
+  if (btnRect.left + menuWidth + 10 <= windowWidth) {
+    left = btnRect.right + 10;
+  } else if (btnRect.left - menuWidth - 10 >= 0) {
+    left = btnRect.left - menuWidth - 10;
+  } else {
+    left = Math.max(10, (windowWidth - menuWidth) / 2);
+  }
+
+  // Adjust top position to keep menu within viewport or prefer extending downwards
+  if (btnRect.top + menuHeight + 10 <= windowHeight) {
+    top = btnRect.top;
+  } else if (btnRect.bottom - menuHeight - 10 >= 0) {
+    // If it doesn't fit below, try positioning above the button
+    top = btnRect.bottom - menuHeight;
+  } else {
+    // If it's still too tall, center it vertically, but allow it to exceed
+    top = Math.max(10, (windowHeight - menuHeight) / 2);
+  }
+
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menu.style.bottom = 'auto';
+  menu.style.right = 'auto';
+}
+
+function updateMenuContent() {
+  const content = document.getElementById('mr-menu-content');
+  if (!content) return;
+
+  content.innerHTML = '';
+
+  if (Object.keys(messageData.categories).length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = `
+      text-align: center;
+      color: #666;
+      padding: 20px;
+      font-style: italic;
+    `;
+    empty.textContent = 'Nenhuma mensagem cadastrada. Clique em "Editar" para adicionar.';
+    content.appendChild(empty);
+    return;
+  }
+
+  // Convertendo para array para manter a ordem
+  const categories = Object.entries(messageData.categories);
+
+  categories.forEach(([categoryName, category]) => {
+    const categoryDiv = document.createElement('div');
+    categoryDiv.style.marginBottom = '8px';
+
+    const categoryBtn = document.createElement('div');
+    categoryBtn.style.cssText = `
+      padding: 8px 12px;
+      background: ${category.color || '#f0f0f0'}; /* Cor da categoria */
+      color: ${category.color ? getContrastColor(category.color) : '#333'}; /* Cor do texto contrastante */
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    `;
+    categoryBtn.textContent = categoryName;
+
+    const arrow = document.createElement('span');
+    arrow.textContent = '▼';
+    arrow.style.transition = 'transform 0.2s';
+    arrow.style.color = category.color ? getContrastColor(category.color) : '#333';
+    categoryBtn.appendChild(arrow);
+
+    const subcategoriesDiv = document.createElement('div');
+    subcategoriesDiv.style.cssText = `
+      margin-top: 4px;
+      margin-left: 12px;
+      display: none;
+    `;
+
+    // Convertendo para array para manter a ordem
+    const subcategories = Object.entries(category.subcategories || {});
+
+    subcategories.forEach(([subName, subItem]) => { // 'subItem' agora pode ser um objeto com message e color
+      const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
+      const subColor = typeof subItem === 'string' ? null : subItem.color;
+
+      const subBtn = document.createElement('div');
+      subBtn.style.cssText = `
+        padding: 6px 12px;
+        background: ${subColor || '#e9ecef'}; /* Cor da subcategoria */
+        color: ${subColor ? getContrastColor(subColor) : '#333'}; /* Cor do texto contrastante */
+        border-radius: 4px;
+        cursor: pointer;
+        margin-bottom: 2px;
+        border-left: 3px solid ${category.color || '#007bff'}; /* Borda com a cor da categoria ou padrão */
+      `;
+      subBtn.textContent = subName;
+
+      subBtn.onclick = (e) => {
+        e.stopPropagation();
+        insertMessage(subMessage);
+        toggleMenu();
+      };
+
+      subcategoriesDiv.appendChild(subBtn);
+    });
+
+    categoryBtn.onclick = () => {
+      const isVisible = subcategoriesDiv.style.display === 'block';
+      subcategoriesDiv.style.display = isVisible ? 'none' : 'block';
+      arrow.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
+      // Recalculate menu position after expanding/collapsing
+      positionMenu();
+    };
+
+    categoryDiv.appendChild(categoryBtn);
+    categoryDiv.appendChild(subcategoriesDiv);
+    content.appendChild(categoryDiv);
+  });
+}
+
+// Função para determinar uma cor de texto contrastante (preto ou branco)
+function getContrastColor(hexcolor) {
+  if (!hexcolor) return '#333';
+  const r = parseInt(hexcolor.substr(1, 2), 16);
+  const g = parseInt(hexcolor.substr(3, 2), 16);
+  const b = parseInt(hexcolor.substr(5, 2), 16);
+  const y = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (y >= 128) ? '#333' : '#fff'; // Retorna preto para cores claras, branco para cores escuras
+}
+
+
+function insertMessage(message) {
+  const campo = document.querySelector('textarea.sc-textarea') ||
+    document.querySelector('textarea') ||
+    document.querySelector('[contenteditable="true"]') ||
+    document.querySelector('input[type="text"]');
+
+  if (campo) {
+    campo.focus();
+
+    if (campo.tagName === 'TEXTAREA' || campo.tagName === 'INPUT') {
+      campo.value = message;
+      campo.dispatchEvent(new Event('input', {
+        bubbles: true
+      }));
+      campo.dispatchEvent(new Event('change', {
+        bubbles: true
+      }));
+    } else {
+      campo.textContent = message;
+      campo.dispatchEvent(new Event('input', {
+        bubbles: true
+      }));
+    }
+  } else {
+    navigator.clipboard.writeText(message).then(() => {
+      alert('Campo de texto não encontrado. Mensagem copiada para área de transferência.');
+    }).catch(() => {
+      alert('Não foi possível encontrar campo de texto ou copiar mensagem.');
+    });
+  }
+}
+
+function toggleMenu() {
+  const menu = document.getElementById('mr-menu');
+  if (!menu) return;
+
+  const isVisible = menu.style.display === 'block';
+
+  if (isVisible) {
+    menu.style.display = 'none';
+  } else {
+    menu.style.display = 'block';
+    updateMenuContent(); // Update content first to get correct scrollHeight
+    positionMenu();
+  }
+}
+
+function renderEditor() {
+  if (document.getElementById('mr-editor')) return;
+
+  const editor = document.createElement('div');
+  editor.id = 'mr-editor';
+  editor.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    max-height: 80vh;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    display: none;
+    z-index: 10002;
+    overflow-y: auto;
+  `;
+
+  editor.innerHTML = `
+    <div style="padding: 16px; border-bottom: 1px solid #eee; background: #f8f9fa; border-radius: 8px 8px 0 0;">
+      <h3 style="margin: 0; color: #333;">Editor de Mensagens</h3>
+    </div>
+    <div style="padding: 16px;">
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nova Categoria:</label>
+        <input type="text" id="new-category" placeholder="Nome da categoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Categoria:</label>
+        <input type="color" id="new-category-color" value="#f0f0f0" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+        <button id="add-category" style="margin-top: 8px; background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Categoria</button>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nova Subcategoria:</label>
+        <select id="category-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
+          <option value="">Selecione uma categoria</option>
+        </select>
+        <input type="text" id="new-subcategory" placeholder="Nome da subcategoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
+        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Subcategoria:</label>
+        <input type="color" id="new-subcategory-color" value="#e9ecef" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
+        <textarea id="subcategory-message" placeholder="Mensagem da subcategoria" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+        <button id="add-subcategory" style="margin-top: 8px; background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Subcategoria</button>
+      </div>
+
+      <div id="existing-items" style="margin-bottom: 16px;">
+        <h4 style="color: #333;">Itens Cadastrados: <small style="color: #666; font-weight: normal;">(Arraste para reordenar)</small></h4>
+        <div id="items-list"></div>
+      </div>
+
+      <div style="border-top: 1px solid #eee; padding: 16px 0; margin-bottom: 16px;">
+        <h4 style="color: #333; margin-top: 0;">Importar/Exportar:</h4>
+        <div style="display: flex; gap: 8px;">
+          <button id="export-data" style="background: #17a2b8; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; flex: 1;">Exportar Mensagens</button>
+          <button id="import-data" style="background: #6f42c1; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; flex: 1;">Importar Mensagens</button>
+        </div>
+        <input type="file" id="file-input" accept=".json" style="display: none;">
+      </div>
+
+      <div style="text-align: right; border-top: 1px solid #eee; padding-top: 16px;">
+        <button id="close-editor" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Fechar</button>
+        <button id="clear-all" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Limpar Tudo</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(editor);
+  setupEditorEvents();
+}
+
+function setupEditorEvents() {
+  document.getElementById('add-category').onclick = addCategory;
+  document.getElementById('add-subcategory').onclick = addSubcategory;
+  document.getElementById('close-editor').onclick = closeEditor;
+  document.getElementById('clear-all').onclick = clearAllData;
+  document.getElementById('export-data').onclick = exportData;
+  document.getElementById('import-data').onclick = () => document.getElementById('file-input').click();
+
+  document.getElementById('file-input').addEventListener('change', handleFileImport);
+}
+
+function exportData() {
+  const dataStr = JSON.stringify(messageData, null, 2);
+  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+
+  const exportFileDefaultName = 'backup-mensagens.json';
+
+  const linkElement = document.createElement('a');
+  linkElement.setAttribute('href', dataUri);
+  linkElement.setAttribute('download', exportFileDefaultName);
+  linkElement.click();
+}
+
+function handleFileImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const importedData = JSON.parse(e.target.result);
+
+      if (!importedData.categories) {
+        throw new Error('Formato de arquivo inválido');
+      }
+
+      // Adicionar lógica de migração para dados antigos sem 'color'
+      // Isso garante compatibilidade com arquivos JSON antigos
+      for (const catName in importedData.categories) {
+        if (importedData.categories.hasOwnProperty(catName)) {
+          const category = importedData.categories[catName];
+          if (category.subcategories) {
+            for (const subName in category.subcategories) {
+              if (category.subcategories.hasOwnProperty(subName)) {
+                let subItem = category.subcategories[subName];
+                if (typeof subItem === 'string') { // Se for apenas a string da mensagem
+                  category.subcategories[subName] = {
+                    message: subItem,
+                    color: '#e9ecef'
+                  }; // Define um padrão
+                }
+              }
+            }
+          }
+          if (!category.color) {
+            category.color = '#f0f0f0'; // Define um padrão para a categoria
+          }
+        }
+      }
+
+      if (confirm('Deseja substituir suas mensagens atuais pelas mensagens importadas?')) {
+        messageData = importedData;
+        saveData();
+        updateCategorySelect();
+        updateItemsList();
+        alert('Mensagens importadas com sucesso!');
+      }
+    } catch (error) {
+      alert('Erro ao importar arquivo: ' + error.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function openEditor() {
+  const editor = document.getElementById('mr-editor');
+  if (!editor) return;
+
+  editor.style.display = 'block';
+  updateCategorySelect();
+  updateItemsList();
+  toggleMenu();
+}
+
+function closeEditor() {
+  const editor = document.getElementById('mr-editor');
+  if (editor) {
+    editor.style.display = 'none';
+  }
+}
+
+function updateCategorySelect() {
+  const select = document.getElementById('category-select');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">Selecione uma categoria</option>';
+
+  Object.keys(messageData.categories).forEach(categoryName => {
+    const option = document.createElement('option');
+    option.value = categoryName;
+    option.textContent = categoryName;
+    select.appendChild(option);
+  });
+}
+
+function addCategory() {
+  const input = document.getElementById('new-category');
+  const colorInput = document.getElementById('new-category-color');
+  const categoryName = input.value.trim();
+  const categoryColor = colorInput.value;
+
+  if (!categoryName) {
+    alert('Digite um nome para a categoria');
+    return;
+  }
+
+  if (messageData.categories[categoryName]) {
+    alert('Categoria já existe');
+    return;
+  }
+
+  messageData.categories[categoryName] = {
+    subcategories: {},
+    color: categoryColor
+  };
+
+  saveData();
+  input.value = '';
+  colorInput.value = '#f0f0f0'; // Resetar para cor padrão
+  updateCategorySelect();
+  updateItemsList();
+  alert('Categoria adicionada com sucesso!');
+}
+
+function addSubcategory() {
+  const categorySelect = document.getElementById('category-select');
+  const subcategoryInput = document.getElementById('new-subcategory');
+  const messageTextarea = document.getElementById('subcategory-message');
+  const subcategoryColorInput = document.getElementById('new-subcategory-color');
+
+  const categoryName = categorySelect.value;
+  const subcategoryName = subcategoryInput.value.trim();
+  const message = messageTextarea.value.trim();
+  const subcategoryColor = subcategoryColorInput.value;
+
+  if (!categoryName) {
+    alert('Selecione uma categoria');
+    return;
+  }
+
+  if (!subcategoryName) {
+    alert('Digite um nome para a subcategoria');
+    return;
+  }
+
+  if (!message) {
+    alert('Digite uma mensagem para a subcategoria');
+    return;
+  }
+
+  if (messageData.categories[categoryName].subcategories[subcategoryName]) {
+    alert('Subcategoria já existe');
+    return;
+  }
+
+  messageData.categories[categoryName].subcategories[subcategoryName] = {
+    message: message,
+    color: subcategoryColor
+  };
+
+  saveData();
+  subcategoryInput.value = '';
+  messageTextarea.value = '';
+  subcategoryColorInput.value = '#e9ecef'; // Resetar para cor padrão
+  updateItemsList();
+  alert('Subcategoria adicionada com sucesso!');
+}
+
+function updateItemsList() {
+  const list = document.getElementById('items-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+
+  Object.keys(messageData.categories).forEach(categoryName => {
+    const category = messageData.categories[categoryName];
+
+    const categoryDiv = document.createElement('div');
+    categoryDiv.style.cssText = `
+      margin-bottom: 12px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: ${category.color || '#f8f9fa'}; /* Cor da categoria no editor */
+      color: ${category.color ? getContrastColor(category.color) : '#333'};
+    `;
+    categoryDiv.draggable = true;
+    categoryDiv.dataset.category = categoryName;
+
+    // Eventos de drag para categorias
+    categoryDiv.addEventListener('dragstart', (e) => {
+      draggedItem = categoryName;
+      e.target.style.opacity = '0.5';
+      e.target.style.transform = 'rotate(2deg)';
+    });
+
+    categoryDiv.addEventListener('dragend', (e) => {
+      e.target.style.opacity = '1';
+      e.target.style.transform = 'none';
+    });
+
+    categoryDiv.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      draggedOverItem = categoryName;
+      e.target.style.borderTop = '3px solid #007bff';
+    });
+
+    categoryDiv.addEventListener('dragleave', (e) => {
+      e.target.style.borderTop = '1px solid #ddd';
+    });
+
+    categoryDiv.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.target.style.borderTop = '1px solid #ddd';
+
+      if (draggedItem !== draggedOverItem) {
+        // Reordena as categorias
+        const categoriesArray = Object.entries(messageData.categories);
+        const draggedIndex = categoriesArray.findIndex(([name]) => name === draggedItem);
+        const overIndex = categoriesArray.findIndex(([name]) => name === draggedOverItem);
+
+        const [removed] = categoriesArray.splice(draggedIndex, 1);
+        categoriesArray.splice(overIndex, 0, removed);
+
+        // Recria o objeto categories na nova ordem
+        messageData.categories = {};
+        categoriesArray.forEach(([name, data]) => {
+          messageData.categories[name] = data;
+        });
+
+        saveData();
+        updateItemsList();
+      }
+    });
+
+    const categoryHeader = document.createElement('div');
+    categoryHeader.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      cursor: move;
+    `;
+
+    const categoryTitle = document.createElement('strong');
+    categoryTitle.textContent = `📁 ${categoryName}`;
+    categoryTitle.style.color = category.color ? getContrastColor(category.color) : '#333';
+
+    const categoryButtons = document.createElement('div');
+    categoryButtons.style.cssText = `
+      display: flex;
+      gap: 4px;
+    `;
+
+    const editCategoryBtn = document.createElement('button');
+    editCategoryBtn.textContent = '✏️ Editar';
+    editCategoryBtn.style.cssText = `
+      background: #ffc107;
+      color: #212529;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    `;
+    editCategoryBtn.onclick = (e) => {
+      e.stopPropagation();
+      editCategory(categoryName, category.color);
+    };
+
+    const deleteCategoryBtn = document.createElement('button');
+    deleteCategoryBtn.textContent = '🗑️ Excluir';
+    deleteCategoryBtn.style.cssText = `
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    `;
+    deleteCategoryBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteCategory(categoryName);
+    };
+
+    categoryButtons.appendChild(editCategoryBtn);
+    categoryButtons.appendChild(deleteCategoryBtn);
+
+    categoryHeader.appendChild(categoryTitle);
+    categoryHeader.appendChild(categoryButtons);
+    categoryDiv.appendChild(categoryHeader);
+
+    Object.keys(category.subcategories || {}).forEach(subName => {
+      const subItem = category.subcategories[subName];
+      // Garante compatibilidade para subcategorias salvas como string (sem cor)
+      const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
+      const subColor = typeof subItem === 'string' ? null : subItem.color;
+
+      const subDiv = document.createElement('div');
+      subDiv.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 8px;
+        background: ${subColor || 'white'}; /* Cor da subcategoria no editor */
+        color: ${subColor ? getContrastColor(subColor) : '#333'};
+        border-radius: 4px;
+        margin-bottom: 4px;
+        cursor: move;
+      `;
+      subDiv.draggable = true;
+      subDiv.dataset.subcategory = subName;
+      subDiv.dataset.category = categoryName;
+
+      // Eventos de drag para subcategorias
+      subDiv.addEventListener('dragstart', (e) => {
+        draggedSubItem = {
+          name: subName,
+          category: categoryName
+        };
+        e.target.style.opacity = '0.5';
+        e.target.style.transform = 'rotate(2deg)';
+        e.stopPropagation();
+      });
+
+      subDiv.addEventListener('dragend', (e) => {
+        e.target.style.opacity = '1';
+        e.target.style.transform = 'none';
+      });
+
+      subDiv.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        draggedOverSubItem = {
+          name: subName,
+          category: categoryName
+        };
+        e.target.style.borderTop = '2px solid #007bff';
+        e.stopPropagation();
+      });
+
+      subDiv.addEventListener('dragleave', (e) => {
+        e.target.style.borderTop = 'none';
+      });
+
+      subDiv.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.target.style.borderTop = 'none';
+        e.stopPropagation();
+
+        if (draggedSubItem && draggedOverSubItem &&
+          draggedSubItem.name !== draggedOverSubItem.name &&
+          draggedSubItem.category === draggedOverSubItem.category) {
+          // Reordena as subcategorias dentro da mesma categoria
+          const subcategoriesArray = Object.entries(messageData.categories[categoryName].subcategories);
+          const draggedIndex = subcategoriesArray.findIndex(([name]) => name === draggedSubItem.name);
+          const overIndex = subcategoriesArray.findIndex(([name]) => name === draggedOverSubItem.name);
+
+          const [removed] = subcategoriesArray.splice(draggedIndex, 1);
+          subcategoriesArray.splice(overIndex, 0, removed);
+
+          // Recria o objeto subcategories na nova ordem
+          messageData.categories[categoryName].subcategories = {};
+          subcategoriesArray.forEach(([name, message]) => {
+            messageData.categories[categoryName].subcategories[name] = message;
+          });
+
+          saveData();
+          updateItemsList();
+        }
+      });
+
+      const subInfo = document.createElement('div');
+      subInfo.innerHTML = `<strong>📄 ${subName}</strong><br><small style="color: ${subColor ? getContrastColor(subColor) : '#666'};">${subMessage.length > 50 ? subMessage.substring(0, 50) + '...' : subMessage}</small>`;
+
+      const subButtons = document.createElement('div');
+      subButtons.style.cssText = `
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+      `;
+
+      const editSubBtn = document.createElement('button');
+      editSubBtn.textContent = '✏️';
+      editSubBtn.style.cssText = `
+        background: #ffc107;
+        color: #212529;
+        border: none;
+        padding: 4px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      editSubBtn.onclick = (e) => {
+        e.stopPropagation();
+        editSubcategory(categoryName, subName, subMessage, subColor);
+      };
+
+      const deleteSubBtn = document.createElement('button');
+      deleteSubBtn.textContent = '🗑️';
+      deleteSubBtn.style.cssText = `
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 4px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      deleteSubBtn.onclick = () => deleteSubcategory(categoryName, subName);
+
+      subButtons.appendChild(editSubBtn);
+      subButtons.appendChild(deleteSubBtn);
+
+      subDiv.appendChild(subInfo);
+      subDiv.appendChild(subButtons);
+      categoryDiv.appendChild(subDiv);
+    });
+
+    list.appendChild(categoryDiv);
+  });
+}
+
+function editCategory(oldName, oldColor) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10003;
+  `;
+
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90%;
+  `;
+
+  content.innerHTML = `
+    <h3 style="margin-top: 0; color: #333;">Editar Categoria</h3>
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nome da Categoria:</label>
+      <input type="text" id="edit-cat-name" value="${oldName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    </div>
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Categoria:</label>
+      <input type="color" id="edit-cat-color" value="${oldColor || '#f0f0f0'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+    </div>
+    <div style="text-align: right;">
+      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Cancelar</button>
+      <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
+    </div>
+  `;
+
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  const nameInput = content.querySelector('#edit-cat-name');
+  const colorInput = content.querySelector('#edit-cat-color');
+  nameInput.focus();
+  nameInput.select();
+
+  content.querySelector('#cancel-edit').onclick = () => {
+    document.body.removeChild(modal);
+  };
+
+  content.querySelector('#save-edit').onclick = () => {
+    const newName = nameInput.value.trim();
+    const newColor = colorInput.value;
+
+    if (!newName) {
+      alert('Digite um nome para a categoria');
+      return;
+    }
+
+    if (newName === oldName && newColor === oldColor) { // Nenhuma mudança real
+      document.body.removeChild(modal);
+      return;
+    }
+
+    if (newName !== oldName && messageData.categories[newName]) {
+      alert('Já existe uma categoria com este nome');
+      return;
+    }
+
+    if (newName !== oldName) {
+      messageData.categories[newName] = messageData.categories[oldName];
+      delete messageData.categories[oldName];
+    }
+    messageData.categories[newName].color = newColor; // Atualiza a cor
+
+    saveData();
+    updateCategorySelect();
+    updateItemsList();
+    document.body.removeChild(modal);
+    alert('Categoria atualizada com sucesso!');
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+
+  content.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.target.tagName !== 'TEXTAREA' || e.ctrlKey)) {
+      e.preventDefault();
+      content.querySelector('#save-edit').click();
+    }
+    if (e.key === 'Escape') {
+      content.querySelector('#cancel-edit').click();
+    }
+  });
+}
+
+
+function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10003;
+  `;
+
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90%;
+  `;
+
+  content.innerHTML = `
+    <h3 style="margin-top: 0; color: #333;">Editar Subcategoria</h3>
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nome da Subcategoria:</label>
+      <input type="text" id="edit-sub-name" value="${oldSubName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    </div>
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Subcategoria:</label>
+      <input type="color" id="edit-sub-color" value="${oldColor || '#e9ecef'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
+    </div>
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Mensagem:</label>
+      <textarea id="edit-sub-message" style="width: 100%; height: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${oldMessage}</textarea>
+    </div>
+    <div style="text-align: right;">
+      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Cancelar</button>
+      <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
+    </div>
+  `;
+
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  const nameInput = content.querySelector('#edit-sub-name');
+  const messageInput = content.querySelector('#edit-sub-message');
+  const colorInput = content.querySelector('#edit-sub-color');
+  nameInput.focus();
+  nameInput.select();
+
+  content.querySelector('#cancel-edit').onclick = () => {
+    document.body.removeChild(modal);
+  };
+
+  content.querySelector('#save-edit').onclick = () => {
+    const newName = nameInput.value.trim();
+    const newMessage = messageInput.value.trim();
+    const newColor = colorInput.value;
+
+    if (!newName) {
+      alert('Digite um nome para a subcategoria');
+      return;
+    }
+
+    if (!newMessage) {
+      alert('Digite uma mensagem para a subcategoria');
+      return;
+    }
+
+    const currentSub = messageData.categories[categoryName].subcategories[oldSubName];
+    // Check if nothing changed
+    if (newName === oldSubName && newMessage === oldMessage && newColor === oldColor) {
+      document.body.removeChild(modal);
+      return;
+    }
+
+
+    if (newName !== oldSubName && messageData.categories[categoryName].subcategories[newName]) {
+      alert('Já existe uma subcategoria com este nome nesta categoria');
+      return;
+    }
+
+    if (newName !== oldSubName) {
+      delete messageData.categories[categoryName].subcategories[oldSubName];
+    }
+
+    messageData.categories[categoryName].subcategories[newName] = {
+      message: newMessage,
+      color: newColor
+    };
+
+    saveData();
+    updateItemsList();
+    document.body.removeChild(modal);
+    alert('Subcategoria atualizada com sucesso!');
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+
+  content.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.target.tagName !== 'TEXTAREA' || e.ctrlKey)) {
+      e.preventDefault();
+      content.querySelector('#save-edit').click();
+    }
+    if (e.key === 'Escape') {
+      content.querySelector('#cancel-edit').click();
+    }
+  });
+}
+
+function deleteCategory(categoryName) {
+  if (confirm(`Tem certeza que deseja excluir a categoria "${categoryName}" e todas suas subcategorias?`)) {
+    delete messageData.categories[categoryName];
+    saveData();
+    updateCategorySelect();
+    updateItemsList();
+  }
+}
+
+function deleteSubcategory(categoryName, subcategoryName) {
+  if (confirm(`Tem certeza que deseja excluir a subcategoria "${subcategoryName}"?`)) {
+    delete messageData.categories[categoryName].subcategories[subcategoryName];
+    saveData();
+    updateItemsList();
+  }
+}
+
+function clearAllData() {
+  if (confirm('Tem certeza que deseja excluir TODAS as mensagens cadastradas? Esta ação não pode ser desfeita.')) {
+    messageData = {
+      categories: {}
+    };
+    saveData();
+    updateCategorySelect();
+    updateItemsList();
+    alert('Todos os dados foram excluídos.');
+  }
+}
+
+renderButton();
