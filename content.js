@@ -1,5 +1,4 @@
 // Sistema de armazenamento das mensagens
-// Sistema de armazenamento das mensagens
 let messageData = {
   categories: {}
 };
@@ -17,6 +16,21 @@ let draggedItem = null;
 let draggedSubItem = null;
 let draggedOverItem = null;
 let draggedOverSubItem = null;
+
+// Mapa de ícones padrão para categorias
+const categoryIcons = {
+  'Gravação': '✍️',
+  'Desconto 50%': '💰',
+  'Mercado Pago': '💳',
+  'Troca de Endereço': '🏠',
+  'Troca de Aliança': '💍',
+  'Menos Usadas': '❓',
+  // Ícone padrão para categorias sem um mapeamento específico ou novas categorias
+  'default': '📂'
+};
+
+// Variável para armazenar a categoria atualmente expandida por clique
+let openCategoryDiv = null;
 
 // Carrega dados salvos
 function loadData() {
@@ -133,8 +147,13 @@ function renderButton() {
       const newLeft = e.clientX - offsetX;
       const newTop = e.clientY - offsetY;
 
-      btn.style.top = newTop + 'px';
-      btn.style.left = newLeft + 'px';
+      const maxX = window.innerWidth - btn.offsetWidth;
+      const maxY = window.innerHeight - btn.offsetHeight;
+      const finalLeft = Math.max(0, Math.min(newLeft, maxX));
+      const finalTop = Math.max(0, Math.min(newTop, maxY));
+
+      btn.style.top = finalTop + 'px';
+      btn.style.left = finalLeft + 'px';
       btn.style.bottom = 'auto';
       btn.style.right = 'auto';
     };
@@ -146,7 +165,7 @@ function renderButton() {
         saveButtonPosition(rect.top, rect.left);
 
         const menu = document.getElementById('mr-menu');
-        if (menu && menu.style.display === 'block') {
+        if (menu && menu.style.visibility === 'visible') { // Verifica visibilidade para posicionar
           positionMenu();
         }
       }
@@ -175,14 +194,15 @@ function renderMenu() {
   menu.style.cssText = `
     position: fixed;
     width: 300px;
-    /* Removed max-height */
     background: white;
     border: 1px solid #ddd;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    display: none;
     z-index: 10001;
-    /* Removed overflow-y: auto; */
+    visibility: hidden; /* Controla visibilidade */
+    opacity: 0; /* Controla transparência */
+    transform: scale(0.95); /* Para efeito de zoom sutil (sem translate) */
+    transition: opacity 0.5s ease, transform 0.5s ease, visibility 0.5s; /* Transição mais suave (0.5s) */
   `;
 
   const header = document.createElement('div');
@@ -220,6 +240,8 @@ function renderMenu() {
   const content = document.createElement('div');
   content.id = 'mr-menu-content';
   content.style.padding = '8px';
+  content.style.maxHeight = 'calc(80vh - 50px)';
+  content.style.overflowY = 'auto';
   menu.appendChild(content);
 
   document.body.appendChild(menu);
@@ -233,38 +255,88 @@ function positionMenu() {
   if (!menu || !btn) return;
 
   const btnRect = btn.getBoundingClientRect();
-  const menuWidth = 300;
-  // Use scrollHeight to get the full content height
-  const menuHeight = menu.scrollHeight;
+
+  // Temporarily make it visible/block to get accurate dimensions, but invisible to user
+  const originalVisibility = menu.style.visibility;
+  const originalOpacity = menu.style.opacity;
+  menu.style.visibility = 'hidden';
+  menu.style.opacity = '0';
+  menu.style.display = 'block'; // Make sure it's block for height calculation
+
+  const menuWidth = menu.offsetWidth; // Use offsetWidth/Height for calculated dimensions
+  const menuHeight = menu.offsetHeight;
+
+  // Restore original display/visibility
+  menu.style.display = 'block'; // Menu should always be block when visible
+  menu.style.visibility = originalVisibility;
+  menu.style.opacity = originalOpacity;
+
   const windowWidth = window.innerWidth;
   const windowHeight = window.innerHeight;
 
   let left, top;
+  const padding = 10; // Padding from window edges
 
-  if (btnRect.left + menuWidth + 10 <= windowWidth) {
-    left = btnRect.right + 10;
-  } else if (btnRect.left - menuWidth - 10 >= 0) {
-    left = btnRect.left - menuWidth - 10;
+  // Horizontal positioning: try right, then left, then center
+  if (btnRect.right + menuWidth + padding <= windowWidth) {
+    left = btnRect.right + padding;
+  } else if (btnRect.left - menuWidth - padding >= 0) {
+    left = btnRect.left - menuWidth - padding;
   } else {
-    left = Math.max(10, (windowWidth - menuWidth) / 2);
+    // Fallback to center if no side fits
+    left = Math.max(padding, (windowWidth - menuWidth) / 2);
   }
 
-  // Adjust top position to keep menu within viewport or prefer extending downwards
-  if (btnRect.top + menuHeight + 10 <= windowHeight) {
+  // Vertical positioning:
+  // Prefer to align with the top of the button, if it fits below
+  if (btnRect.top + menuHeight + padding <= windowHeight) {
     top = btnRect.top;
-  } else if (btnRect.bottom - menuHeight - 10 >= 0) {
-    // If it doesn't fit below, try positioning above the button
+  }
+  // Else, prefer to align with the bottom of the button, if it fits above
+  else if (btnRect.bottom - menuHeight - padding >= 0) {
     top = btnRect.bottom - menuHeight;
-  } else {
-    // If it's still too tall, center it vertically, but allow it to exceed
-    top = Math.max(10, (windowHeight - menuHeight) / 2);
+  }
+  // Otherwise, center it vertically within the available space, clamped by window edges
+  else {
+    top = Math.max(padding, (windowHeight - menuHeight) / 2);
+    top = Math.min(top, windowHeight - menuHeight - padding); // Ensure it doesn't go off bottom
   }
 
   menu.style.left = left + 'px';
   menu.style.top = top + 'px';
-  menu.style.bottom = 'auto';
-  menu.style.right = 'auto';
+  menu.style.transformOrigin = 'center center';
 }
+
+// Function to open a category
+const openCategory = (currentCategoryDiv, subcategoriesDiv, arrow) => {
+    // Close the previously open category if it exists and is different from the current one
+    if (openCategoryDiv && openCategoryDiv !== currentCategoryDiv) {
+        const prevSubDiv = openCategoryDiv.querySelector('.subcategories-list');
+        const prevArrow = openCategoryDiv.querySelector('.arrow-icon');
+        if (prevSubDiv) {
+            prevSubDiv.style.maxHeight = '0';
+            prevSubDiv.style.opacity = '0';
+        }
+        if (prevArrow) prevArrow.style.transform = 'rotate(0deg)';
+    }
+
+    // Open the current category
+    subcategoriesDiv.style.maxHeight = '500px'; // Valor grande o suficiente para conter todas as subcategorias
+    subcategoriesDiv.style.opacity = '1';
+    arrow.style.transform = 'rotate(180deg)';
+    positionMenu(); // Recalcula a posição do menu
+    openCategoryDiv = currentCategoryDiv;
+};
+
+// Function to close a category
+const closeCategory = (subcategoriesDiv, arrow) => {
+    subcategoriesDiv.style.maxHeight = '0';
+    subcategoriesDiv.style.opacity = '0';
+    arrow.style.transform = 'rotate(0deg)';
+    positionMenu();
+    openCategoryDiv = null;
+};
+
 
 function updateMenuContent() {
   const content = document.getElementById('mr-menu-content');
@@ -285,7 +357,6 @@ function updateMenuContent() {
     return;
   }
 
-  // Convertendo para array para manter a ordem
   const categories = Object.entries(messageData.categories);
 
   categories.forEach(([categoryName, category]) => {
@@ -295,64 +366,90 @@ function updateMenuContent() {
     const categoryBtn = document.createElement('div');
     categoryBtn.style.cssText = `
       padding: 8px 12px;
-      background: ${category.color || '#f0f0f0'}; /* Cor da categoria */
-      color: ${category.color ? getContrastColor(category.color) : '#333'}; /* Cor do texto contrastante */
+      background: #f0f0f0;
+      color: #333;
       border-radius: 4px;
       cursor: pointer;
       font-weight: bold;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
     `;
-    categoryBtn.textContent = categoryName;
+
+    const categoryTextContainer = document.createElement('div');
+    categoryTextContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `;
+
+    const categoryIconSpan = document.createElement('span');
+    categoryIconSpan.textContent = category.icon || categoryIcons[categoryName] || categoryIcons['default'];
+    categoryIconSpan.style.color = category.color || '#333';
+    categoryIconSpan.style.fontSize = '18px';
+
+    const categoryNameSpan = document.createElement('span');
+    categoryNameSpan.textContent = categoryName;
+
+    categoryTextContainer.appendChild(categoryIconSpan);
+    categoryTextContainer.appendChild(categoryNameSpan);
+    categoryBtn.appendChild(categoryTextContainer);
 
     const arrow = document.createElement('span');
     arrow.textContent = '▼';
     arrow.style.transition = 'transform 0.2s';
-    arrow.style.color = category.color ? getContrastColor(category.color) : '#333';
+    arrow.style.color = '#333';
+    arrow.classList.add('arrow-icon'); // Add class for easy selection
     categoryBtn.appendChild(arrow);
 
     const subcategoriesDiv = document.createElement('div');
     subcategoriesDiv.style.cssText = `
       margin-top: 4px;
       margin-left: 12px;
-      display: none;
+      overflow: hidden;
+      max-height: 0; /* Começa fechado */
+      opacity: 0; /* Começa invisível */
+      transition: max-height 0.5s ease-out, opacity 0.5s ease-out; /* Transição mais suave (0.5s) */
     `;
+    subcategoriesDiv.classList.add('subcategories-list'); // Add class for easy selection
 
-    // Convertendo para array para manter a ordem
     const subcategories = Object.entries(category.subcategories || {});
 
-    subcategories.forEach(([subName, subItem]) => { // 'subItem' agora pode ser um objeto com message e color
+    subcategories.forEach(([subName, subItem]) => {
       const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
-      const subColor = typeof subItem === 'string' ? null : subItem.color;
+      const subColor = (typeof subItem === 'object' && subItem.color) ? subItem.color : (category.color || '#007bff');
 
       const subBtn = document.createElement('div');
       subBtn.style.cssText = `
         padding: 6px 12px;
-        background: ${subColor || '#e9ecef'}; /* Cor da subcategoria */
-        color: ${subColor ? getContrastColor(subColor) : '#333'}; /* Cor do texto contrastante */
+        background: white;
+        color: #333;
         border-radius: 4px;
         cursor: pointer;
         margin-bottom: 2px;
-        border-left: 3px solid ${category.color || '#007bff'}; /* Borda com a cor da categoria ou padrão */
+        border: 1px solid ${subColor}; /* Contorno fino da mesma cor */
+        border-left: 5px solid ${subColor}; /* Borda esquerda maior (Aplicada DEPOIS para sobrescrever e garantir visibilidade) */
       `;
       subBtn.textContent = subName;
 
       subBtn.onclick = (e) => {
         e.stopPropagation();
         insertMessage(subMessage);
-        toggleMenu();
+        toggleMenu(); // Fecha o menu principal após inserir a mensagem
       };
 
       subcategoriesDiv.appendChild(subBtn);
     });
 
+    // Evento de click para abrir/fechar a categoria
     categoryBtn.onclick = () => {
-      const isVisible = subcategoriesDiv.style.display === 'block';
-      subcategoriesDiv.style.display = isVisible ? 'none' : 'block';
-      arrow.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
-      // Recalculate menu position after expanding/collapsing
-      positionMenu();
+      const isVisible = parseFloat(subcategoriesDiv.style.maxHeight) > 0; // Verifica se está "aberto"
+      if (isVisible) {
+        closeCategory(subcategoriesDiv, arrow);
+      } else {
+        openCategory(categoryDiv, subcategoriesDiv, arrow);
+      }
     };
 
     categoryDiv.appendChild(categoryBtn);
@@ -360,17 +457,6 @@ function updateMenuContent() {
     content.appendChild(categoryDiv);
   });
 }
-
-// Função para determinar uma cor de texto contrastante (preto ou branco)
-function getContrastColor(hexcolor) {
-  if (!hexcolor) return '#333';
-  const r = parseInt(hexcolor.substr(1, 2), 16);
-  const g = parseInt(hexcolor.substr(3, 2), 16);
-  const b = parseInt(hexcolor.substr(5, 2), 16);
-  const y = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-  return (y >= 128) ? '#333' : '#fff'; // Retorna preto para cores claras, branco para cores escuras
-}
-
 
 function insertMessage(message) {
   const campo = document.querySelector('textarea.sc-textarea') ||
@@ -408,13 +494,33 @@ function toggleMenu() {
   const menu = document.getElementById('mr-menu');
   if (!menu) return;
 
-  const isVisible = menu.style.display === 'block';
+  const isVisible = menu.style.visibility === 'visible';
 
   if (isVisible) {
-    menu.style.display = 'none';
+    menu.style.opacity = '0';
+    menu.style.transform = 'scale(0.95)';
+    menu.addEventListener('transitionend', function handler() {
+      menu.style.visibility = 'hidden';
+      menu.removeEventListener('transitionend', handler);
+    });
+
+    // Fecha qualquer subcategoria aberta quando o menu principal é fechado
+    if (openCategoryDiv) {
+        const prevSubDiv = openCategoryDiv.querySelector('.subcategories-list');
+        const prevArrow = openCategoryDiv.querySelector('.arrow-icon');
+        if (prevSubDiv) {
+            prevSubDiv.style.maxHeight = '0';
+            prevSubDiv.style.opacity = '0';
+        }
+        if (prevArrow) prevArrow.style.transform = 'rotate(0deg)';
+        openCategoryDiv = null; // Reseta a variável de rastreamento
+    }
+
   } else {
-    menu.style.display = 'block';
-    updateMenuContent(); // Update content first to get correct scrollHeight
+    menu.style.visibility = 'visible';
+    menu.style.opacity = '1';
+    menu.style.transform = 'scale(1)';
+    updateMenuContent();
     positionMenu();
   }
 }
@@ -448,8 +554,10 @@ function renderEditor() {
       <div style="margin-bottom: 16px;">
         <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nova Categoria:</label>
         <input type="text" id="new-category" placeholder="Nome da categoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Categoria:</label>
-        <input type="color" id="new-category-color" value="#f0f0f0" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Ícone da Categoria (emoji):</label>
+        <input type="text" id="new-category-icon" placeholder="Ex: ✍️, 💰, 🏠" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor do Ícone:</label>
+        <input type="color" id="new-category-color" value="#007bff" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
         <button id="add-category" style="margin-top: 8px; background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Categoria</button>
       </div>
 
@@ -459,8 +567,8 @@ function renderEditor() {
           <option value="">Selecione uma categoria</option>
         </select>
         <input type="text" id="new-subcategory" placeholder="Nome da subcategoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
-        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Subcategoria:</label>
-        <input type="color" id="new-subcategory-color" value="#e9ecef" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
+        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Linha Lateral (Subcat.):</label>
+        <input type="color" id="new-subcategory-color" value="#007bff" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
         <textarea id="subcategory-message" placeholder="Mensagem da subcategoria" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
         <button id="add-subcategory" style="margin-top: 8px; background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Subcategoria</button>
       </div>
@@ -526,8 +634,6 @@ function handleFileImport(event) {
         throw new Error('Formato de arquivo inválido');
       }
 
-      // Adicionar lógica de migração para dados antigos sem 'color'
-      // Isso garante compatibilidade com arquivos JSON antigos
       for (const catName in importedData.categories) {
         if (importedData.categories.hasOwnProperty(catName)) {
           const category = importedData.categories[catName];
@@ -535,17 +641,23 @@ function handleFileImport(event) {
             for (const subName in category.subcategories) {
               if (category.subcategories.hasOwnProperty(subName)) {
                 let subItem = category.subcategories[subName];
-                if (typeof subItem === 'string') { // Se for apenas a string da mensagem
+                if (typeof subItem === 'string') {
                   category.subcategories[subName] = {
                     message: subItem,
-                    color: '#e9ecef'
-                  }; // Define um padrão
+                    color: '#007bff'
+                  };
+                }
+                if (!category.subcategories[subName].color) {
+                  category.subcategories[subName].color = '#007bff';
                 }
               }
             }
           }
           if (!category.color) {
-            category.color = '#f0f0f0'; // Define um padrão para a categoria
+            category.color = '#007bff';
+          }
+          if (!category.icon) {
+            category.icon = categoryIcons[catName] || categoryIcons['default'];
           }
         }
       }
@@ -572,7 +684,7 @@ function openEditor() {
   editor.style.display = 'block';
   updateCategorySelect();
   updateItemsList();
-  toggleMenu();
+  toggleMenu(); // Fecha o menu principal ao abrir o editor
 }
 
 function closeEditor() {
@@ -598,8 +710,10 @@ function updateCategorySelect() {
 
 function addCategory() {
   const input = document.getElementById('new-category');
+  const iconInput = document.getElementById('new-category-icon');
   const colorInput = document.getElementById('new-category-color');
   const categoryName = input.value.trim();
+  const categoryIcon = iconInput.value.trim();
   const categoryColor = colorInput.value;
 
   if (!categoryName) {
@@ -614,12 +728,14 @@ function addCategory() {
 
   messageData.categories[categoryName] = {
     subcategories: {},
-    color: categoryColor
+    color: categoryColor,
+    icon: categoryIcon || categoryIcons[categoryName] || categoryIcons['default']
   };
 
   saveData();
   input.value = '';
-  colorInput.value = '#f0f0f0'; // Resetar para cor padrão
+  iconInput.value = '';
+  colorInput.value = '#007bff';
   updateCategorySelect();
   updateItemsList();
   alert('Categoria adicionada com sucesso!');
@@ -664,7 +780,7 @@ function addSubcategory() {
   saveData();
   subcategoryInput.value = '';
   messageTextarea.value = '';
-  subcategoryColorInput.value = '#e9ecef'; // Resetar para cor padrão
+  subcategoryColorInput.value = '#007bff';
   updateItemsList();
   alert('Subcategoria adicionada com sucesso!');
 }
@@ -684,13 +800,12 @@ function updateItemsList() {
       padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
-      background: ${category.color || '#f8f9fa'}; /* Cor da categoria no editor */
-      color: ${category.color ? getContrastColor(category.color) : '#333'};
+      background: #f8f9fa;
+      color: #333;
     `;
     categoryDiv.draggable = true;
     categoryDiv.dataset.category = categoryName;
 
-    // Eventos de drag para categorias
     categoryDiv.addEventListener('dragstart', (e) => {
       draggedItem = categoryName;
       e.target.style.opacity = '0.5';
@@ -700,12 +815,16 @@ function updateItemsList() {
     categoryDiv.addEventListener('dragend', (e) => {
       e.target.style.opacity = '1';
       e.target.style.transform = 'none';
+      draggedItem = null;
+      draggedOverItem = null;
     });
 
     categoryDiv.addEventListener('dragover', (e) => {
       e.preventDefault();
-      draggedOverItem = categoryName;
-      e.target.style.borderTop = '3px solid #007bff';
+      if (draggedItem && draggedItem !== categoryName) {
+        draggedOverItem = categoryName;
+        e.target.style.borderTop = '3px solid #007bff';
+      }
     });
 
     categoryDiv.addEventListener('dragleave', (e) => {
@@ -716,8 +835,7 @@ function updateItemsList() {
       e.preventDefault();
       e.target.style.borderTop = '1px solid #ddd';
 
-      if (draggedItem !== draggedOverItem) {
-        // Reordena as categorias
+      if (draggedItem && draggedOverItem && draggedItem !== draggedOverItem) {
         const categoriesArray = Object.entries(messageData.categories);
         const draggedIndex = categoriesArray.findIndex(([name]) => name === draggedItem);
         const overIndex = categoriesArray.findIndex(([name]) => name === draggedOverItem);
@@ -725,7 +843,6 @@ function updateItemsList() {
         const [removed] = categoriesArray.splice(draggedIndex, 1);
         categoriesArray.splice(overIndex, 0, removed);
 
-        // Recria o objeto categories na nova ordem
         messageData.categories = {};
         categoriesArray.forEach(([name, data]) => {
           messageData.categories[name] = data;
@@ -734,6 +851,8 @@ function updateItemsList() {
         saveData();
         updateItemsList();
       }
+      draggedItem = null;
+      draggedOverItem = null;
     });
 
     const categoryHeader = document.createElement('div');
@@ -745,9 +864,25 @@ function updateItemsList() {
       cursor: move;
     `;
 
-    const categoryTitle = document.createElement('strong');
-    categoryTitle.textContent = `📁 ${categoryName}`;
-    categoryTitle.style.color = category.color ? getContrastColor(category.color) : '#333';
+    const categoryTitleContainer = document.createElement('div');
+    categoryTitleContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `;
+
+    const categoryIconSpan = document.createElement('span');
+    categoryIconSpan.textContent = category.icon || categoryIcons[categoryName] || categoryIcons['default'];
+    categoryIconSpan.style.color = category.color || '#007bff';
+    categoryIconSpan.style.fontSize = '18px';
+
+    const categoryNameSpan = document.createElement('strong');
+    categoryNameSpan.textContent = categoryName;
+    categoryNameSpan.style.color = '#333';
+
+    categoryTitleContainer.appendChild(categoryIconSpan);
+    categoryTitleContainer.appendChild(categoryNameSpan);
+    categoryHeader.appendChild(categoryTitleContainer);
 
     const categoryButtons = document.createElement('div');
     categoryButtons.style.cssText = `
@@ -768,7 +903,7 @@ function updateItemsList() {
     `;
     editCategoryBtn.onclick = (e) => {
       e.stopPropagation();
-      editCategory(categoryName, category.color);
+      editCategory(categoryName, category.color, category.icon);
     };
 
     const deleteCategoryBtn = document.createElement('button');
@@ -790,15 +925,13 @@ function updateItemsList() {
     categoryButtons.appendChild(editCategoryBtn);
     categoryButtons.appendChild(deleteCategoryBtn);
 
-    categoryHeader.appendChild(categoryTitle);
     categoryHeader.appendChild(categoryButtons);
     categoryDiv.appendChild(categoryHeader);
 
     Object.keys(category.subcategories || {}).forEach(subName => {
       const subItem = category.subcategories[subName];
-      // Garante compatibilidade para subcategorias salvas como string (sem cor)
       const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
-      const subColor = typeof subItem === 'string' ? null : subItem.color;
+      const subColor = (typeof subItem === 'object' && subItem.color) ? subItem.color : (category.color || '#007bff');
 
       const subDiv = document.createElement('div');
       subDiv.style.cssText = `
@@ -806,17 +939,18 @@ function updateItemsList() {
         justify-content: space-between;
         align-items: center;
         padding: 4px 8px;
-        background: ${subColor || 'white'}; /* Cor da subcategoria no editor */
-        color: ${subColor ? getContrastColor(subColor) : '#333'};
+        background: white;
+        color: #333;
         border-radius: 4px;
         margin-bottom: 4px;
         cursor: move;
+        border: 1px solid ${subColor}; /* Contorno fino da mesma cor */
+        border-left: 5px solid ${subColor}; /* Borda esquerda maior (Aplicada DEPOIS para sobrescrever e garantir visibilidade) */
       `;
       subDiv.draggable = true;
       subDiv.dataset.subcategory = subName;
       subDiv.dataset.category = categoryName;
 
-      // Eventos de drag para subcategorias
       subDiv.addEventListener('dragstart', (e) => {
         draggedSubItem = {
           name: subName,
@@ -830,15 +964,19 @@ function updateItemsList() {
       subDiv.addEventListener('dragend', (e) => {
         e.target.style.opacity = '1';
         e.target.style.transform = 'none';
+        draggedSubItem = null;
+        draggedOverSubItem = null;
       });
 
       subDiv.addEventListener('dragover', (e) => {
         e.preventDefault();
-        draggedOverSubItem = {
-          name: subName,
-          category: categoryName
-        };
-        e.target.style.borderTop = '2px solid #007bff';
+        if (draggedSubItem && draggedSubItem.category === categoryName && draggedSubItem.name !== subName) {
+          draggedOverSubItem = {
+            name: subName,
+            category: categoryName
+          };
+          e.target.style.borderTop = '2px solid #007bff';
+        }
         e.stopPropagation();
       });
 
@@ -854,7 +992,6 @@ function updateItemsList() {
         if (draggedSubItem && draggedOverSubItem &&
           draggedSubItem.name !== draggedOverSubItem.name &&
           draggedSubItem.category === draggedOverSubItem.category) {
-          // Reordena as subcategorias dentro da mesma categoria
           const subcategoriesArray = Object.entries(messageData.categories[categoryName].subcategories);
           const draggedIndex = subcategoriesArray.findIndex(([name]) => name === draggedSubItem.name);
           const overIndex = subcategoriesArray.findIndex(([name]) => name === draggedOverSubItem.name);
@@ -862,19 +999,20 @@ function updateItemsList() {
           const [removed] = subcategoriesArray.splice(draggedIndex, 1);
           subcategoriesArray.splice(overIndex, 0, removed);
 
-          // Recria o objeto subcategories na nova ordem
           messageData.categories[categoryName].subcategories = {};
-          subcategoriesArray.forEach(([name, message]) => {
-            messageData.categories[categoryName].subcategories[name] = message;
+          subcategoriesArray.forEach(([name, data]) => {
+            messageData.categories[categoryName].subcategories[name] = data;
           });
 
           saveData();
           updateItemsList();
         }
+        draggedSubItem = null;
+        draggedOverSubItem = null;
       });
 
       const subInfo = document.createElement('div');
-      subInfo.innerHTML = `<strong>📄 ${subName}</strong><br><small style="color: ${subColor ? getContrastColor(subColor) : '#666'};">${subMessage.length > 50 ? subMessage.substring(0, 50) + '...' : subMessage}</small>`;
+      subInfo.innerHTML = `<strong>📄 ${subName}</strong><br><small style="color: #666;">${subMessage.length > 50 ? subMessage.substring(0, 50) + '...' : subMessage}</small>`;
 
       const subButtons = document.createElement('div');
       subButtons.style.cssText = `
@@ -924,7 +1062,7 @@ function updateItemsList() {
   });
 }
 
-function editCategory(oldName, oldColor) {
+function editCategory(oldName, oldColor, oldIcon) {
   const modal = document.createElement('div');
   modal.style.cssText = `
     position: fixed;
@@ -954,9 +1092,13 @@ function editCategory(oldName, oldColor) {
       <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nome da Categoria:</label>
       <input type="text" id="edit-cat-name" value="${oldName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
     </div>
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Ícone da Categoria (emoji):</label>
+      <input type="text" id="edit-cat-icon" value="${oldIcon || ''}" placeholder="Ex: ✍️, 💰, 🏠" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    </div>
     <div style="margin-bottom: 16px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Categoria:</label>
-      <input type="color" id="edit-cat-color" value="${oldColor || '#f0f0f0'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor do Ícone:</label>
+      <input type="color" id="edit-cat-color" value="${oldColor || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
     </div>
     <div style="text-align: right;">
       <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Cancelar</button>
@@ -968,6 +1110,7 @@ function editCategory(oldName, oldColor) {
   document.body.appendChild(modal);
 
   const nameInput = content.querySelector('#edit-cat-name');
+  const iconInput = content.querySelector('#edit-cat-icon');
   const colorInput = content.querySelector('#edit-cat-color');
   nameInput.focus();
   nameInput.select();
@@ -978,6 +1121,7 @@ function editCategory(oldName, oldColor) {
 
   content.querySelector('#save-edit').onclick = () => {
     const newName = nameInput.value.trim();
+    const newIcon = iconInput.value.trim();
     const newColor = colorInput.value;
 
     if (!newName) {
@@ -985,7 +1129,7 @@ function editCategory(oldName, oldColor) {
       return;
     }
 
-    if (newName === oldName && newColor === oldColor) { // Nenhuma mudança real
+    if (newName === oldName && newColor === oldColor && (newIcon === oldIcon || (!newIcon && !oldIcon))) {
       document.body.removeChild(modal);
       return;
     }
@@ -999,7 +1143,8 @@ function editCategory(oldName, oldColor) {
       messageData.categories[newName] = messageData.categories[oldName];
       delete messageData.categories[oldName];
     }
-    messageData.categories[newName].color = newColor; // Atualiza a cor
+    messageData.categories[newName].color = newColor;
+    messageData.categories[newName].icon = newIcon;
 
     saveData();
     updateCategorySelect();
@@ -1057,8 +1202,8 @@ function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
       <input type="text" id="edit-sub-name" value="${oldSubName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
     </div>
     <div style="margin-bottom: 16px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Subcategoria:</label>
-      <input type="color" id="edit-sub-color" value="${oldColor || '#e9ecef'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
+      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Linha Lateral (Subcat.):</label>
+      <input type="color" id="edit-sub-color" value="${oldColor || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display: block; margin-bottom: 4px; font-weight: bold;">Mensagem:</label>
@@ -1099,7 +1244,6 @@ function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
     }
 
     const currentSub = messageData.categories[categoryName].subcategories[oldSubName];
-    // Check if nothing changed
     if (newName === oldSubName && newMessage === oldMessage && newColor === oldColor) {
       document.body.removeChild(modal);
       return;
