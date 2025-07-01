@@ -458,17 +458,99 @@ function updateMenuContent() {
   });
 }
 
+/**
+ * Tries to extract the first name of the customer from the Mercado Livre page.
+ * This function is a heuristic and might need adjustments based on actual Mercado Livre HTML changes.
+ * It looks for common patterns where the customer's name might be displayed.
+ * @returns {string} The first name of the customer, or an empty string if not found.
+ */
+function getFirstNameFromPage() {
+  let customerName = '';
+
+  // Attempt 1: Look for the name within the user_header div, as provided by the user
+  let nameElement = document.querySelector('#user_header p');
+  if (nameElement) {
+    let nameText = nameElement.textContent.trim();
+    customerName = nameText.split(' ')[0]; // Get only the first name
+  }
+
+  // Attempt 2: Look for specific elements in Mercado Livre's chat or sales pages
+  // Common selectors for customer names:
+  // In a chat context, it might be in a header or a specific message bubble.
+  // In a sales detail page, it might be near the "Comprador" or "Vendedor" section.
+  if (!customerName) {
+    nameElement = document.querySelector('.andes-message-card__header__title span.andes-text_size_large');
+    if (nameElement) {
+      let nameText = nameElement.textContent.trim();
+      // Assuming the format is "Conversa com [Nome do Cliente]" or similar
+      const match = nameText.match(/Conversa com (.+)/);
+      if (match && match[1]) {
+        customerName = match[1].split(' ')[0]; // Get only the first name
+      } else {
+        // If it's just the name
+        customerName = nameText.split(' ')[0];
+      }
+    }
+  }
+
+  // Attempt 3: Look for elements with data attributes or specific classes on a transaction page
+  if (!customerName) {
+    nameElement = document.querySelector('[data-testid="buyer-name"], .buyer-info__name, .user-info__name');
+    if (nameElement) {
+      customerName = nameElement.textContent.trim().split(' ')[0];
+    }
+  }
+
+  // Attempt 4: More generic approach, looking for common user profile links/spans
+  if (!customerName) {
+    nameElement = document.querySelector('a.nav-profile-menu-trigger span.nav-menu-label'); // For logged in user
+    if (nameElement) {
+      // This might get the seller's name, not the buyer's. Use with caution.
+      customerName = nameElement.textContent.trim().split(' ')[0];
+    }
+  }
+
+  // Fallback: If no specific element is found, try to find a common "Comprador" or "Cliente" label and get the adjacent text
+  if (!customerName) {
+      const buyerLabel = Array.from(document.querySelectorAll('span, div, p')).find(el => 
+          el.textContent.includes('Comprador') || el.textContent.includes('Cliente')
+      );
+      if (buyerLabel && buyerLabel.nextElementSibling) {
+          customerName = buyerLabel.nextElementSibling.textContent.trim().split(' ')[0];
+      }
+  }
+  
+  // Clean up the name (remove common prefixes/suffixes if any)
+  customerName = customerName.replace(/^(Sr\.|Sra\.)\s*/i, '').trim();
+
+  return customerName;
+}
+
+
 function insertMessage(message) {
   const campo = document.querySelector('textarea.sc-textarea') ||
     document.querySelector('textarea') ||
     document.querySelector('[contenteditable="true"]') ||
     document.querySelector('input[type="text"]');
 
+  let finalMessage = message;
+
+  // Check if the message contains the [NOME_CLIENTE] placeholder
+  if (finalMessage.includes('[NOME_CLIENTE]')) {
+    const customerFirstName = getFirstNameFromPage();
+    if (customerFirstName) {
+      finalMessage = finalMessage.replace(/\[NOME_CLIENTE\]/g, customerFirstName);
+    } else {
+      // If no name is found, remove the placeholder
+      finalMessage = finalMessage.replace(/\[NOME_CLIENTE\]/g, '').trim();
+    }
+  }
+
   if (campo) {
     campo.focus();
 
     if (campo.tagName === 'TEXTAREA' || campo.tagName === 'INPUT') {
-      campo.value = message;
+      campo.value = finalMessage;
       campo.dispatchEvent(new Event('input', {
         bubbles: true
       }));
@@ -476,13 +558,13 @@ function insertMessage(message) {
         bubbles: true
       }));
     } else {
-      campo.textContent = message;
+      campo.textContent = finalMessage;
       campo.dispatchEvent(new Event('input', {
         bubbles: true
       }));
     }
   } else {
-    navigator.clipboard.writeText(message).then(() => {
+    navigator.clipboard.writeText(finalMessage).then(() => {
       alert('Campo de texto não encontrado. Mensagem copiada para área de transferência.');
     }).catch(() => {
       alert('Não foi possível encontrar campo de texto ou copiar mensagem.');
@@ -612,9 +694,7 @@ function setupEditorEvents() {
 function exportData() {
   const dataStr = JSON.stringify(messageData, null, 2);
   const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-
   const exportFileDefaultName = 'backup-mensagens.json';
-
   const linkElement = document.createElement('a');
   linkElement.setAttribute('href', dataUri);
   linkElement.setAttribute('download', exportFileDefaultName);
@@ -629,7 +709,6 @@ function handleFileImport(event) {
   reader.onload = (e) => {
     try {
       const importedData = JSON.parse(e.target.result);
-
       if (!importedData.categories) {
         throw new Error('Formato de arquivo inválido');
       }
@@ -641,11 +720,9 @@ function handleFileImport(event) {
             for (const subName in category.subcategories) {
               if (category.subcategories.hasOwnProperty(subName)) {
                 let subItem = category.subcategories[subName];
+                // Ensure subItem is an object with message and color
                 if (typeof subItem === 'string') {
-                  category.subcategories[subName] = {
-                    message: subItem,
-                    color: '#007bff'
-                  };
+                  category.subcategories[subName] = { message: subItem, color: '#007bff' };
                 }
                 if (!category.subcategories[subName].color) {
                   category.subcategories[subName].color = '#007bff';
@@ -674,13 +751,13 @@ function handleFileImport(event) {
     }
   };
   reader.readAsText(file);
-  event.target.value = '';
+  event.target.value = ''; // Clear the file input
 }
+
 
 function openEditor() {
   const editor = document.getElementById('mr-editor');
   if (!editor) return;
-
   editor.style.display = 'block';
   updateCategorySelect();
   updateItemsList();
@@ -699,7 +776,6 @@ function updateCategorySelect() {
   if (!select) return;
 
   select.innerHTML = '<option value="">Selecione uma categoria</option>';
-
   Object.keys(messageData.categories).forEach(categoryName => {
     const option = document.createElement('option');
     option.value = categoryName;
@@ -720,7 +796,6 @@ function addCategory() {
     alert('Digite um nome para a categoria');
     return;
   }
-
   if (messageData.categories[categoryName]) {
     alert('Categoria já existe');
     return;
@@ -731,7 +806,6 @@ function addCategory() {
     color: categoryColor,
     icon: categoryIcon || categoryIcons[categoryName] || categoryIcons['default']
   };
-
   saveData();
   input.value = '';
   iconInput.value = '';
@@ -756,17 +830,14 @@ function addSubcategory() {
     alert('Selecione uma categoria');
     return;
   }
-
   if (!subcategoryName) {
     alert('Digite um nome para a subcategoria');
     return;
   }
-
   if (!message) {
     alert('Digite uma mensagem para a subcategoria');
     return;
   }
-
   if (messageData.categories[categoryName].subcategories[subcategoryName]) {
     alert('Subcategoria já existe');
     return;
@@ -776,7 +847,6 @@ function addSubcategory() {
     message: message,
     color: subcategoryColor
   };
-
   saveData();
   subcategoryInput.value = '';
   messageTextarea.value = '';
@@ -834,7 +904,6 @@ function updateItemsList() {
     categoryDiv.addEventListener('drop', (e) => {
       e.preventDefault();
       e.target.style.borderTop = '1px solid #ddd';
-
       if (draggedItem && draggedOverItem && draggedItem !== draggedOverItem) {
         const categoriesArray = Object.entries(messageData.categories);
         const draggedIndex = categoriesArray.findIndex(([name]) => name === draggedItem);
@@ -854,6 +923,7 @@ function updateItemsList() {
       draggedItem = null;
       draggedOverItem = null;
     });
+
 
     const categoryHeader = document.createElement('div');
     categoryHeader.style.cssText = `
@@ -878,23 +948,24 @@ function updateItemsList() {
 
     const categoryNameSpan = document.createElement('strong');
     categoryNameSpan.textContent = categoryName;
-    categoryNameSpan.style.color = '#333';
 
     categoryTitleContainer.appendChild(categoryIconSpan);
     categoryTitleContainer.appendChild(categoryNameSpan);
     categoryHeader.appendChild(categoryTitleContainer);
 
-    const categoryButtons = document.createElement('div');
-    categoryButtons.style.cssText = `
+
+    const categoryActions = document.createElement('div');
+    categoryActions.style.cssText = `
       display: flex;
       gap: 4px;
     `;
 
     const editCategoryBtn = document.createElement('button');
-    editCategoryBtn.textContent = '✏️ Editar';
+    editCategoryBtn.textContent = '✏️';
+    editCategoryBtn.title = 'Editar Categoria';
     editCategoryBtn.style.cssText = `
       background: #ffc107;
-      color: #212529;
+      color: white;
       border: none;
       padding: 4px 8px;
       border-radius: 4px;
@@ -903,11 +974,13 @@ function updateItemsList() {
     `;
     editCategoryBtn.onclick = (e) => {
       e.stopPropagation();
-      editCategory(categoryName, category.color, category.icon);
+      editCategory(categoryName);
     };
+    categoryActions.appendChild(editCategoryBtn);
 
     const deleteCategoryBtn = document.createElement('button');
-    deleteCategoryBtn.textContent = '🗑️ Excluir';
+    deleteCategoryBtn.textContent = '🗑️';
+    deleteCategoryBtn.title = 'Excluir Categoria';
     deleteCategoryBtn.style.cssText = `
       background: #dc3545;
       color: white;
@@ -921,15 +994,16 @@ function updateItemsList() {
       e.stopPropagation();
       deleteCategory(categoryName);
     };
+    categoryActions.appendChild(deleteCategoryBtn);
 
-    categoryButtons.appendChild(editCategoryBtn);
-    categoryButtons.appendChild(deleteCategoryBtn);
-
-    categoryHeader.appendChild(categoryButtons);
+    categoryHeader.appendChild(categoryActions);
     categoryDiv.appendChild(categoryHeader);
 
-    Object.keys(category.subcategories || {}).forEach(subName => {
-      const subItem = category.subcategories[subName];
+    const subcategoriesList = document.createElement('div');
+    subcategoriesList.style.marginTop = '8px';
+    subcategoriesList.classList.add('ml-messages-list'); // Adiciona classe para customização do scrollbar
+
+    Object.entries(category.subcategories).forEach(([subName, subItem]) => {
       const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
       const subColor = (typeof subItem === 'object' && subItem.color) ? subItem.color : (category.color || '#007bff');
 
@@ -938,27 +1012,22 @@ function updateItemsList() {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 4px 8px;
+        padding: 6px 8px;
         background: white;
-        color: #333;
+        border: 1px solid #eee;
+        border-left: 5px solid ${subColor};
         border-radius: 4px;
         margin-bottom: 4px;
         cursor: move;
-        border: 1px solid ${subColor}; /* Contorno fino da mesma cor */
-        border-left: 5px solid ${subColor}; /* Borda esquerda maior (Aplicada DEPOIS para sobrescrever e garantir visibilidade) */
       `;
       subDiv.draggable = true;
-      subDiv.dataset.subcategory = subName;
       subDiv.dataset.category = categoryName;
+      subDiv.dataset.subcategory = subName;
 
       subDiv.addEventListener('dragstart', (e) => {
-        draggedSubItem = {
-          name: subName,
-          category: categoryName
-        };
+        draggedSubItem = { category: categoryName, subcategory: subName };
         e.target.style.opacity = '0.5';
         e.target.style.transform = 'rotate(2deg)';
-        e.stopPropagation();
       });
 
       subDiv.addEventListener('dragend', (e) => {
@@ -970,31 +1039,23 @@ function updateItemsList() {
 
       subDiv.addEventListener('dragover', (e) => {
         e.preventDefault();
-        if (draggedSubItem && draggedSubItem.category === categoryName && draggedSubItem.name !== subName) {
-          draggedOverSubItem = {
-            name: subName,
-            category: categoryName
-          };
-          e.target.style.borderTop = '2px solid #007bff';
+        if (draggedSubItem && draggedSubItem.category === categoryName && draggedSubItem.subcategory !== subName) {
+          draggedOverSubItem = { category: categoryName, subcategory: subName };
+          e.target.style.borderTop = '3px solid #007bff';
         }
-        e.stopPropagation();
       });
 
       subDiv.addEventListener('dragleave', (e) => {
-        e.target.style.borderTop = 'none';
+        e.target.style.borderTop = '1px solid #eee';
       });
 
       subDiv.addEventListener('drop', (e) => {
         e.preventDefault();
-        e.target.style.borderTop = 'none';
-        e.stopPropagation();
-
-        if (draggedSubItem && draggedOverSubItem &&
-          draggedSubItem.name !== draggedOverSubItem.name &&
-          draggedSubItem.category === draggedOverSubItem.category) {
+        e.target.style.borderTop = '1px solid #eee';
+        if (draggedSubItem && draggedOverSubItem && draggedSubItem.category === draggedOverSubItem.category && draggedSubItem.subcategory !== draggedOverSubItem.subcategory) {
           const subcategoriesArray = Object.entries(messageData.categories[categoryName].subcategories);
-          const draggedIndex = subcategoriesArray.findIndex(([name]) => name === draggedSubItem.name);
-          const overIndex = subcategoriesArray.findIndex(([name]) => name === draggedOverSubItem.name);
+          const draggedIndex = subcategoriesArray.findIndex(([name]) => name === draggedSubItem.subcategory);
+          const overIndex = subcategoriesArray.findIndex(([name]) => name === draggedOverSubItem.subcategory);
 
           const [removed] = subcategoriesArray.splice(draggedIndex, 1);
           subcategoriesArray.splice(overIndex, 0, removed);
@@ -1011,59 +1072,71 @@ function updateItemsList() {
         draggedOverSubItem = null;
       });
 
-      const subInfo = document.createElement('div');
-      subInfo.innerHTML = `<strong>📄 ${subName}</strong><br><small style="color: #666;">${subMessage.length > 50 ? subMessage.substring(0, 50) + '...' : subMessage}</small>`;
+      const subTextContainer = document.createElement('div');
+      subTextContainer.textContent = subName;
+      subTextContainer.style.flex = '1';
+      subTextContainer.style.cursor = 'pointer';
+      subTextContainer.onclick = () => {
+        insertMessage(subMessage);
+        toggleMenu();
+      };
 
-      const subButtons = document.createElement('div');
-      subButtons.style.cssText = `
-        display: flex;
-        gap: 4px;
-        flex-shrink: 0;
-      `;
+      const subActions = document.createElement('div');
+      subActions.style.display = 'flex';
+      subActions.style.gap = '4px';
 
       const editSubBtn = document.createElement('button');
       editSubBtn.textContent = '✏️';
+      editSubBtn.title = 'Editar Subcategoria';
       editSubBtn.style.cssText = `
         background: #ffc107;
-        color: #212529;
+        color: white;
         border: none;
-        padding: 4px 6px;
-        border-radius: 4px;
+        padding: 2px 6px;
+        border-radius: 3px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 10px;
       `;
       editSubBtn.onclick = (e) => {
         e.stopPropagation();
         editSubcategory(categoryName, subName, subMessage, subColor);
       };
+      subActions.appendChild(editSubBtn);
 
       const deleteSubBtn = document.createElement('button');
       deleteSubBtn.textContent = '🗑️';
+      deleteSubBtn.title = 'Excluir Subcategoria';
       deleteSubBtn.style.cssText = `
         background: #dc3545;
         color: white;
         border: none;
-        padding: 4px 6px;
-        border-radius: 4px;
+        padding: 2px 6px;
+        border-radius: 3px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 10px;
       `;
-      deleteSubBtn.onclick = () => deleteSubcategory(categoryName, subName);
+      deleteSubBtn.onclick = (e) => {
+        e.stopPropagation();
+        deleteSubcategory(categoryName, subName);
+      };
+      subActions.appendChild(deleteSubBtn);
 
-      subButtons.appendChild(editSubBtn);
-      subButtons.appendChild(deleteSubBtn);
-
-      subDiv.appendChild(subInfo);
-      subDiv.appendChild(subButtons);
-      categoryDiv.appendChild(subDiv);
+      subDiv.appendChild(subTextContainer);
+      subDiv.appendChild(subActions);
+      subcategoriesList.appendChild(subDiv);
     });
 
+    categoryDiv.appendChild(subcategoriesList);
     list.appendChild(categoryDiv);
   });
 }
 
-function editCategory(oldName, oldColor, oldIcon) {
+function editCategory(categoryName) {
+  const category = messageData.categories[categoryName];
+  if (!category) return;
+
   const modal = document.createElement('div');
+  modal.id = 'edit-category-modal';
   modal.style.cssText = `
     position: fixed;
     top: 0;
@@ -1072,8 +1145,8 @@ function editCategory(oldName, oldColor, oldIcon) {
     height: 100%;
     background: rgba(0,0,0,0.5);
     display: flex;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     z-index: 10003;
   `;
 
@@ -1082,26 +1155,27 @@ function editCategory(oldName, oldColor, oldIcon) {
     background: white;
     padding: 20px;
     border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
     width: 400px;
     max-width: 90%;
   `;
 
   content.innerHTML = `
-    <h3 style="margin-top: 0; color: #333;">Editar Categoria</h3>
-    <div style="margin-bottom: 12px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nome da Categoria:</label>
-      <input type="text" id="edit-cat-name" value="${oldName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">Editar Categoria: ${categoryName}</h3>
+    <div style="margin-bottom: 10px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Nome:</label>
+      <input type="text" id="edit-category-name" value="${categoryName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
     </div>
-    <div style="margin-bottom: 12px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Ícone da Categoria (emoji):</label>
-      <input type="text" id="edit-cat-icon" value="${oldIcon || ''}" placeholder="Ex: ✍️, 💰, 🏠" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="margin-bottom: 10px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Ícone (emoji):</label>
+      <input type="text" id="edit-category-icon" value="${category.icon || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
     </div>
-    <div style="margin-bottom: 16px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor do Ícone:</label>
-      <input type="color" id="edit-cat-color" value="${oldColor || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Cor:</label>
+      <input type="color" id="edit-category-color" value="${category.color || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
     </div>
     <div style="text-align: right;">
-      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Cancelar</button>
+      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancelar</button>
       <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
     </div>
   `;
@@ -1109,42 +1183,35 @@ function editCategory(oldName, oldColor, oldIcon) {
   modal.appendChild(content);
   document.body.appendChild(modal);
 
-  const nameInput = content.querySelector('#edit-cat-name');
-  const iconInput = content.querySelector('#edit-cat-icon');
-  const colorInput = content.querySelector('#edit-cat-color');
-  nameInput.focus();
-  nameInput.select();
-
-  content.querySelector('#cancel-edit').onclick = () => {
+  document.getElementById('cancel-edit').onclick = () => {
     document.body.removeChild(modal);
   };
 
-  content.querySelector('#save-edit').onclick = () => {
-    const newName = nameInput.value.trim();
-    const newIcon = iconInput.value.trim();
-    const newColor = colorInput.value;
+  document.getElementById('save-edit').onclick = () => {
+    const newName = document.getElementById('edit-category-name').value.trim();
+    const newIcon = document.getElementById('edit-category-icon').value.trim();
+    const newColor = document.getElementById('edit-category-color').value;
 
     if (!newName) {
-      alert('Digite um nome para a categoria');
+      alert('O nome da categoria não pode ser vazio.');
       return;
     }
 
-    if (newName === oldName && newColor === oldColor && (newIcon === oldIcon || (!newIcon && !oldIcon))) {
-      document.body.removeChild(modal);
+    if (newName !== categoryName && messageData.categories[newName]) {
+      alert('Já existe uma categoria com este novo nome.');
       return;
     }
 
-    if (newName !== oldName && messageData.categories[newName]) {
-      alert('Já existe uma categoria com este nome');
-      return;
+    if (newName !== categoryName) {
+      // Create new category with updated name and copy subcategories
+      messageData.categories[newName] = { ...category, icon: newIcon, color: newColor };
+      // Delete old category
+      delete messageData.categories[categoryName];
+    } else {
+      // Update existing category
+      messageData.categories[categoryName].icon = newIcon;
+      messageData.categories[categoryName].color = newColor;
     }
-
-    if (newName !== oldName) {
-      messageData.categories[newName] = messageData.categories[oldName];
-      delete messageData.categories[oldName];
-    }
-    messageData.categories[newName].color = newColor;
-    messageData.categories[newName].icon = newIcon;
 
     saveData();
     updateCategorySelect();
@@ -1170,9 +1237,9 @@ function editCategory(oldName, oldColor, oldIcon) {
   });
 }
 
-
-function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
+function editSubcategory(categoryName, subcategoryName, currentMessage, currentColor) {
   const modal = document.createElement('div');
+  modal.id = 'edit-subcategory-modal';
   modal.style.cssText = `
     position: fixed;
     top: 0;
@@ -1181,8 +1248,8 @@ function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
     height: 100%;
     background: rgba(0,0,0,0.5);
     display: flex;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     z-index: 10003;
   `;
 
@@ -1191,26 +1258,27 @@ function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
     background: white;
     padding: 20px;
     border-radius: 8px;
-    width: 400px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    width: 500px;
     max-width: 90%;
   `;
 
   content.innerHTML = `
-    <h3 style="margin-top: 0; color: #333;">Editar Subcategoria</h3>
-    <div style="margin-bottom: 12px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nome da Subcategoria:</label>
-      <input type="text" id="edit-sub-name" value="${oldSubName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">Editar Subcategoria: ${subcategoryName}</h3>
+    <div style="margin-bottom: 10px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Nome:</label>
+      <input type="text" id="edit-subcategory-name" value="${subcategoryName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
     </div>
-    <div style="margin-bottom: 16px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Cor da Linha Lateral (Subcat.):</label>
-      <input type="color" id="edit-sub-color" value="${oldColor || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
+    <div style="margin-bottom: 10px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Cor da Linha Lateral:</label>
+      <input type="color" id="edit-subcategory-color" value="${currentColor}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
     </div>
-    <div style="margin-bottom: 16px;">
-      <label style="display: block; margin-bottom: 4px; font-weight: bold;">Mensagem:</label>
-      <textarea id="edit-sub-message" style="width: 100%; height: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${oldMessage}</textarea>
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Mensagem:</label>
+      <textarea id="edit-subcategory-message" style="width: 100%; height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${currentMessage}</textarea>
     </div>
     <div style="text-align: right;">
-      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Cancelar</button>
+      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancelar</button>
       <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
     </div>
   `;
@@ -1218,47 +1286,34 @@ function editSubcategory(categoryName, oldSubName, oldMessage, oldColor) {
   modal.appendChild(content);
   document.body.appendChild(modal);
 
-  const nameInput = content.querySelector('#edit-sub-name');
-  const messageInput = content.querySelector('#edit-sub-message');
-  const colorInput = content.querySelector('#edit-sub-color');
-  nameInput.focus();
-  nameInput.select();
-
-  content.querySelector('#cancel-edit').onclick = () => {
+  document.getElementById('cancel-edit').onclick = () => {
     document.body.removeChild(modal);
   };
 
-  content.querySelector('#save-edit').onclick = () => {
-    const newName = nameInput.value.trim();
-    const newMessage = messageInput.value.trim();
-    const newColor = colorInput.value;
+  document.getElementById('save-edit').onclick = () => {
+    const newName = document.getElementById('edit-subcategory-name').value.trim();
+    const newMessage = document.getElementById('edit-subcategory-message').value.trim();
+    const newColor = document.getElementById('edit-subcategory-color').value;
 
     if (!newName) {
-      alert('Digite um nome para a subcategoria');
+      alert('O nome da subcategoria não pode ser vazio.');
       return;
     }
-
     if (!newMessage) {
-      alert('Digite uma mensagem para a subcategoria');
+      alert('A mensagem da subcategoria não pode ser vazia.');
       return;
     }
 
-    const currentSub = messageData.categories[categoryName].subcategories[oldSubName];
-    if (newName === oldSubName && newMessage === oldMessage && newColor === oldColor) {
-      document.body.removeChild(modal);
+    if (newName !== subcategoryName && messageData.categories[categoryName].subcategories[newName]) {
+      alert('Já existe uma subcategoria com este novo nome.');
       return;
     }
 
-
-    if (newName !== oldSubName && messageData.categories[categoryName].subcategories[newName]) {
-      alert('Já existe uma subcategoria com este nome nesta categoria');
-      return;
+    // Update the subcategory
+    const oldSubcategoryData = messageData.categories[categoryName].subcategories[subcategoryName];
+    if (newName !== subcategoryName) {
+        delete messageData.categories[categoryName].subcategories[subcategoryName];
     }
-
-    if (newName !== oldSubName) {
-      delete messageData.categories[categoryName].subcategories[oldSubName];
-    }
-
     messageData.categories[categoryName].subcategories[newName] = {
       message: newMessage,
       color: newColor
@@ -1305,15 +1360,26 @@ function deleteSubcategory(categoryName, subcategoryName) {
 }
 
 function clearAllData() {
-  if (confirm('Tem certeza que deseja excluir TODAS as mensagens cadastradas? Esta ação não pode ser desfeita.')) {
-    messageData = {
-      categories: {}
-    };
+  if (confirm('Tem certeza que deseja excluir TODAS as suas mensagens? Esta ação não pode ser desfeita.')) {
+    messageData.categories = {};
     saveData();
     updateCategorySelect();
     updateItemsList();
-    alert('Todos os dados foram excluídos.');
+    alert('Todos os dados foram limpos!');
   }
 }
 
-renderButton();
+// Initial rendering when the content script is injected
+loadData(); // Load data initially
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', renderButton);
+} else {
+  renderButton();
+}
+
+// Listen for messages from the popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "openEditor") {
+    openEditor();
+  }
+});
