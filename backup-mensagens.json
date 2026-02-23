@@ -3,28 +3,32 @@
     "Gravação": {
       "subcategories": {
         "Com os dados": {
-          "message": "Olá, tudo bem? Muito obrigado pela compra. Nós fazemos gravação sim (a laser), o valor é de 25 reais por aliança (50 reais o par), caso tenha interesse basta nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix é: 17085388000173 (Bruno D Sims), tudo bem?",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Muito obrigado pela compra. Nós fazemos gravação sim (a laser), o valor é de 25 reais por aliança (50 reais o par), caso tenha interesse basta nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix é: 17085388000173 (Bruno D Sims), tudo bem?",
           "color": "#019d0b"
         },
         "Sem os dados": {
-          "message": "Olá, tudo bem? Muito obrigado pela compra. Nós fazemos gravação sim (a laser), o valor é de 25 reais por aliança (50 reais o par), caso tenha interesse basta informar os dados da gravação e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix é: 17085388000173 (Bruno D Sims), tudo bem?",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Muito obrigado pela compra. Nós fazemos gravação sim (a laser), o valor é de 25 reais por aliança (50 reais o par), caso tenha interesse basta informar os dados da gravação e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix é: 17085388000173 (Bruno D Sims), tudo bem?",
           "color": "#c90303"
         },
         "Horário do corte (12h00)": {
           "message": "Os dados da gravação e o comprovante de pagamento devem ser enviados até as 12h00 de hoje, caso contrário o pedido infelizmente precisará ser despachado sem a gravação, tudo bem?",
           "color": "#e9ecef"
         },
+        "Obrigado pelo Pagamento": {
+          "message": "Obrigado pelo pagamento, a gravação foi inclusa conforme solicitado, seu pedido será postado hoje com os tamanhos informados, após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\" da sua conta do MercadoLivre), ok? Qualquer dúvida por favor me avise, muito obrigado!",
+          "color": "#ffdd00"
+        },
+        "Confirmação de Aro": {
+          "message": "Olá [NOME_CLIENTE], tudo bem? Obrigado pela confirmação, seu pedido será postado hoje com os tamanhos solicitados, após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\" da sua conta do MercadoLivre), ok? Qualquer dúvida por favor me avise, muito obrigado!",
+          "color": "#007bff"
+        },
+        "Desistiu da Gravação / Confirmação de envio": {
+          "message": "Olá [NOME_CLIENTE], tudo bem? Sem problemas. Seu pedido será postado hoje com os tamanhos solicitados, após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\" da sua conta do MercadoLivre), ok? Qualquer dúvida por favor me avise, muito obrigado!",
+          "color": "#430094"
+        },
         "Horário do corte (11h00)": {
           "message": "Os dados da gravação e o comprovante de pagamento devem ser enviados até as 11h00 de hoje, caso contrário o pedido infelizmente precisará ser despachado sem a gravação, tudo bem?",
           "color": "#e9ecef"
-        },
-        "Obrigado pelo Pagamento": {
-          "message": "Obrigado pelo pagamento, a gravação foi inclusa conforme solicitado, seu pedido será postado hoje com os tamanhos informados, após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\" da sua conta do MercadoLivre), ok? Qualquer dúvida por favor me avise, muito obrigado!",
-          "color": "#004d99"
-        },
-        "Desistiu da Gravação / Confirmação de envio": {
-          "message": "Sem problemas. Seu pedido será postado hoje com os tamanhos solicitados, após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\" da sua conta do MercadoLivre), ok? Qualquer dúvida por favor me avise, muito obrigado!",
-          "color": "#430094"
         }
       },
       "color": "#000000",
@@ -33,11 +37,11 @@
     "Desconto 50%": {
       "subcategories": {
         "Mencionou Desconto": {
-          "message": "Olá, tudo bem? Obrigado pela sua nova compra. Isso mesmo, neste caso o valor total da gravação ficará R$    (já com os 50% de desconto). Peço que nos envie os dados da gravação e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix 17085388000173 (CNP J). Ok?",
+          "message": "Olá  [NOME_CLIENTE], tudo bem? Obrigado pela sua nova compra. Isso mesmo, neste caso o valor total da gravação ficará R$    (já com os 50% de desconto). Peço que nos envie os dados da gravação e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos abaixo), nossa chave pix 17085388000173 (CNP J). Ok?",
           "color": "#1ca800"
         },
         "Mencionou Recompra": {
-          "message": "Olá, tudo bem? Obrigado por ter refeito a compra, nesse caso podemos oferecer um desconto de 50% no valor da gravação. Assim o total ficaria em R$    , caso tenha interesse basta confirmar os dados da gravação e nos enviar o comprovante de pagamento por aqui, nossa chave pix é: 17085388000173 (CNP J), ok?",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Obrigado por ter refeito a compra, nesse caso podemos oferecer um desconto de 50% no valor da gravação. Assim o total ficaria em R$    , caso tenha interesse basta confirmar os dados da gravação e nos enviar o comprovante de pagamento por aqui, nossa chave pix é: 17085388000173 (CNP J), ok?",
           "color": "#fd810d"
         }
       },
@@ -54,8 +58,7 @@
           "color": "#004a94"
         }
       },
-      "color": "#707070",
-      "icon": "💍"
+      "color": "#707070"
     },
     "Mercado Pago": {
       "subcategories": {
@@ -89,7 +92,7 @@
     "Troca de Endereço": {
       "subcategories": {
         "Msg Padrão Inicial": {
-          "message": "Olá, tudo bem? Muito obrigado pela compra, mas com relação ao endereço, o MercadoLivre infelizmente não permite que vendedores alterem os dados de entrega, somente o comprador pode fazer isso, ok? Para corrigir o endereço basta seguir os passos abaixo:",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Muito obrigado pela compra, mas com relação ao endereço, o MercadoLivre infelizmente não permite que vendedores alterem os dados de entrega, somente o comprador pode fazer isso, ok? Para corrigir o endereço basta seguir os passos abaixo:",
           "color": "#e9ecef"
         },
         "Passo 1, 2 e 3": {
@@ -109,24 +112,28 @@
     },
     "Menos Usadas": {
       "subcategories": {
-        "Dúvida no Aro (COM FOTO DO ANEL)": {
-          "message": "Olá, tudo bem? Infelizmente não podemos indicar tamanhos com base em fotos, mas se vc nos passar a medida obtida eu consigo lhe informar qual é a numeração correspondente sim, ok?",
-          "color": "#e9ecef"
-        },
-        "Previsão de Entrega": {
-          "message": "Olá, tudo bem? Obrigado pela sua compra. Infelizmente não conseguimos definir o horário ou data da entrega pois ela é feita exclusivamente pelo próprio Mercado Livre, ok? De qualquer forma, seu pedido será postado hoje e após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\"), tudo bem?",
-          "color": "#e9ecef"
+        "Não informou o Aro": {
+          "message": "Olá [NOME_CLIENTE], tudo bem? Estamos no aguardo do seu contato informando os tamanhos desejados para podermos realizar a postagem do seu pedido, ok?  Por favor, tente nos enviar essa informação até as 12h00 (de hoje) para evitar atrasos na entrega do produto. Qualquer dúvida por favor me avise, muito obrigado!",
+          "color": "#ff0000"
         },
         "Garantia + Qualidade": {
           "message": "Este produto acompanha certificado de garantia de180 dias, tudo bem? Mas o banho de ouro costuma durar cerca de 1.5 ano se as alianças não ficarem expostas a produtos químicos pesados (como removedores e solventes) ou à água do mar, qualquer dúvida por favor me avise, muito obrigado!",
           "color": "#e9ecef"
         },
+        "Previsão de Entrega": {
+          "message": "Olá [NOME_CLIENTE], tudo bem? Obrigado pela sua compra. Infelizmente não conseguimos definir o horário ou data da entrega pois ela é feita exclusivamente pelo próprio Mercado Livre, ok? De qualquer forma, seu pedido será postado hoje e após o envio será possível acompanhar a entrega através da página de detalhes da compra (na seção \"Compras\"), tudo bem?",
+          "color": "#e9ecef"
+        },
+        "Dúvida no Aro (COM FOTO DO ANEL)": {
+          "message": "Olá [NOME_CLIENTE], tudo bem? Infelizmente não podemos indicar tamanhos com base em fotos, mas se vc nos passar a medida obtida eu consigo lhe informar qual é a numeração correspondente sim, ok?",
+          "color": "#e9ecef"
+        },
         "Compra de Brinde Avulso": {
-          "message": "Olá, tudo bem? Muito obrigado pela compra, é possível sim, o valor é de R$ 7 , caso tenha interesse basta informar o tamanho do aro e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos, abaixo), nossa chave pix é: 17085388000173 (CNPJ), ok? Fico no aguardo. Obrigado!",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Muito obrigado pela compra, é possível sim, o valor é de R$ 7 , caso tenha interesse basta informar o tamanho do aro e nos enviar o comprovante de pagamento por aqui (na opção de anexar arquivos, abaixo), nossa chave pix é: 17085388000173 (CNPJ), ok? Fico no aguardo. Obrigado!",
           "color": "#e9ecef"
         },
         "Gravação em Outra Loja": {
-          "message": "Olá, tudo bem? Caso deseje vc poderá gravar as alianças por conta própria sim, mas para isso será necessário levá-las até um local capaz de gravar em metais mais duros (como aço ou titânio), pois joalherias que gravam somente em ouro e prata infelizmente não conseguirão gravar no tungstênio, ok? Qualquer dúvida por favor me avise, muito obrigado!",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Caso deseje vc poderá gravar as alianças por conta própria sim, mas para isso será necessário levá-las até um local capaz de gravar em metais mais duros (como aço ou titânio), pois joalherias que gravam somente em ouro e prata infelizmente não conseguirão gravar no tungstênio, ok? Qualquer dúvida por favor me avise, muito obrigado!",
           "color": "#e9ecef"
         },
         "1 - Desconto Gravação (Padrão)": {
@@ -138,7 +145,7 @@
           "color": "#006eff"
         },
         "1 - Corrente Avulsa (Padrão)": {
-          "message": "Olá, tudo bem? Muito obrigado pela compra, podemos incluir a corrente no seu pedido pelo acréscimo de 27 reais, ok? Caso tenha interesse no chave pix é: 17085388000173 (CNPJ),  basta nos enviar o comprovante por aqui. Também é possível realizar o pagamento via boleto ou cartão através do MercadoPago, nesse caso o link segue abaixo:",
+          "message": "Olá [NOME_CLIENTE], tudo bem? Muito obrigado pela compra, podemos incluir a corrente no seu pedido pelo acréscimo de 27 reais, ok? Caso tenha interesse no chave pix é: 17085388000173 (CNPJ),  basta nos enviar o comprovante por aqui. Também é possível realizar o pagamento via boleto ou cartão através do MercadoPago, nesse caso o link segue abaixo:",
           "color": "#ffbb00"
         },
         "2 - Corrente Avulsa | Link MP [ R$ 27 ]": {

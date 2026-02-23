@@ -1371,11 +1371,29 @@ function clearAllData() {
 
 // Initial rendering when the content script is injected
 loadData(); // Load data initially
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', renderButton);
-} else {
-  renderButton();
-}
+
+// Verifica se há mensagens padrão para aplicar (primeira instalação)
+chrome.runtime.sendMessage({ action: 'get_default_messages' }, (res) => {
+  if (res && res.data) {
+    try {
+      const imported = JSON.parse(res.data);
+      if (imported.categories && Object.keys(messageData.categories).length === 0) {
+        // Só aplica se o usuário ainda não tem mensagens salvas
+        messageData = imported;
+        saveData();
+        console.log('[Passo-Largo] Mensagens padrão aplicadas com sucesso!');
+      }
+    } catch(e) {
+      console.warn('[Passo-Largo] Erro ao aplicar mensagens padrão:', e.message);
+    }
+  }
+  // Renderiza o botão depois de verificar (com ou sem template)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderButton);
+  } else {
+    renderButton();
+  }
+});
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

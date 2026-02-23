@@ -1,16 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Passo-Largo",
-  "version": "2.0",
-  "description": "Sistema de mensagens rápidas organizadas por categorias para o Mercado Livre",
+  "version": "2.2",
+  "description": "Mensagens rápidas para Mercado Livre com backup no Google Drive",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "identity"
   ],
+  "oauth2": {
+    "client_id": "781537445754-j144kkq7oc6trt7m8qh78vssf6635afo.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
   "host_permissions": [
     "*://*.mercadolivre.com.br/*",
-    "*://*.mercadolibre.com/*"
+    "*://*.mercadolibre.com/*",
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -24,7 +37,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Configurar Mensagens Rápidas"
+    "default_title": "Passo-Largo"
   },
   "icons": {
     "16": "icon16.png",
