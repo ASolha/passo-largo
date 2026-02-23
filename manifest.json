@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Passo-Largo",
-  "version": "4.1",
+  "version": "4.2",
   "description": "Mensagens rápidas para Mercado Livre com backup no Google Drive",
   "permissions": [
     "storage",
