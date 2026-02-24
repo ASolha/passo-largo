@@ -229,8 +229,7 @@ function buildPanel() {
     requestAnimationFrame(step);
   }
 
-  panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
-  panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
+  // arrow buttons removed (sidebar layout)
 
   panel.querySelector('#mr-tt').onclick = () => {
     isDarkTheme = !isDarkTheme;
@@ -789,8 +788,7 @@ function buildPanel() {
     requestAnimationFrame(step);
   }
 
-  panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
-  panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
+  // arrow buttons removed (sidebar layout)
 
   panel.querySelector('#mr-tt').onclick = () => {
     isDarkTheme = !isDarkTheme;
