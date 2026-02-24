@@ -1,1403 +1,1739 @@
-// Sistema de armazenamento das mensagens
-let messageData = {
-  categories: {}
-};
+// ============================================================
+//  PASSO-LARGO  —  content.js  v3.0
+//  UI redesenhada seguindo o mock visual
+// ============================================================
 
-// Posição do botão
-let buttonPosition = {
-  bottom: '20px',
-  right: '20px',
-  top: 'auto',
-  left: 'auto'
-};
+// ── Estado global ────────────────────────────────────────────
+let messageData = { categories: {} };
+let buttonPosition = { bottom: '20px', right: '20px', top: 'auto', left: 'auto' };
+let activeCategory = null;
+let searchQuery    = '';
+let isDarkTheme    = false;
 
-// Variáveis para controle do drag (apenas no editor)
-let draggedItem = null;
-let draggedSubItem = null;
-let draggedOverItem = null;
-let draggedOverSubItem = null;
+const AVAILABLE_VARS = [
+  '[NOME_CLIENTE]',
+  '[NUMERO_PEDIDO]',
+  '[PRAZO_ENTREGA]',
+  '[DATA]',
+  '[HORA]',
+  '[VALOR]',
+];
 
-// Mapa de ícones padrão para categorias
 const categoryIcons = {
-  'Gravação': '✍️',
-  'Desconto 50%': '💰',
-  'Mercado Pago': '💳',
-  'Troca de Endereço': '🏠',
+  'Gravação':         '✍️',
+  'Desconto 50%':     '💰',
+  'Mercado Pago':     '💳',
+  'Troca de Endereço':'🏠',
   'Troca de Aliança': '💍',
-  'Menos Usadas': '❓',
-  // Ícone padrão para categorias sem um mapeamento específico ou novas categorias
-  'default': '📂'
+  'Menos Usadas':     '❓',
+  default:            '📂',
 };
 
-// Variável para armazenar a categoria atualmente expandida por clique
-let openCategoryDiv = null;
-
-// Carrega dados salvos
+// ── Persistência ─────────────────────────────────────────────
 function loadData() {
-  const saved = localStorage.getItem('mr-messages');
-  if (saved) {
-    try {
-      messageData = JSON.parse(saved);
-    } catch (e) {
-      console.error('Erro ao carregar dados:', e);
-    }
-  }
-
-  // Carrega posição do botão
-  const savedPosition = localStorage.getItem('mr-button-position');
-  if (savedPosition) {
-    try {
-      buttonPosition = JSON.parse(savedPosition);
-    } catch (e) {
-      console.error('Erro ao carregar posição do botão:', e);
-    }
-  }
+  try { const s = localStorage.getItem('mr-messages');  if (s) messageData    = JSON.parse(s); } catch(e) {}
+  try { const p = localStorage.getItem('mr-button-position'); if (p) buttonPosition = JSON.parse(p); } catch(e) {}
+  try { const t = localStorage.getItem('mr-theme');     if (t) isDarkTheme    = t === 'dark'; } catch(e) {}
 }
-
-// Salva dados
-function saveData() {
-  localStorage.setItem('mr-messages', JSON.stringify(messageData));
-}
-
-// Salva posição do botão
+function saveData() { localStorage.setItem('mr-messages', JSON.stringify(messageData)); }
 function saveButtonPosition(top, left) {
-  const windowWidth = window.innerWidth;
-  const windowHeight = window.innerHeight;
-
-  const distanceToRight = windowWidth - left;
-  const distanceToBottom = windowHeight - top;
-
-  if (distanceToRight < windowWidth / 2) {
-    buttonPosition.right = distanceToRight + 'px';
-    buttonPosition.left = 'auto';
-  } else {
-    buttonPosition.left = left + 'px';
-    buttonPosition.right = 'auto';
-  }
-
-  if (distanceToBottom < windowHeight / 2) {
-    buttonPosition.bottom = distanceToBottom + 'px';
-    buttonPosition.top = 'auto';
-  } else {
-    buttonPosition.top = top + 'px';
-    buttonPosition.bottom = 'auto';
-  }
-
+  const ww = window.innerWidth, wh = window.innerHeight;
+  const dr = ww - left, db = wh - top;
+  buttonPosition = {
+    right:  dr < ww/2 ? dr+'px' : 'auto',  left: dr < ww/2 ? 'auto' : left+'px',
+    bottom: db < wh/2 ? db+'px' : 'auto',  top:  db < wh/2 ? 'auto' : top+'px',
+  };
   localStorage.setItem('mr-button-position', JSON.stringify(buttonPosition));
 }
 
-function renderButton() {
-  if (document.getElementById('mr-button')) return;
-
-  loadData();
-
-  const btn = document.createElement('div');
-  btn.id = 'mr-button';
-  btn.textContent = '✉️';
-
-  btn.style.cssText = `
-    position: fixed;
-    top: ${buttonPosition.top};
-    left: ${buttonPosition.left};
-    bottom: ${buttonPosition.bottom};
-    right: ${buttonPosition.right};
-    width: 50px;
-    height: 50px;
-    background: #007bff;
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 10000;
-    user-select: none;
-  `;
-
-  const drag = document.createElement('div');
-  drag.textContent = '⋮';
-  drag.style.cssText = `
-    cursor: move;
-    position: absolute;
-    top: -10px;
-    left: -10px;
-    background: #ccc;
-    border-radius: 4px;
-    padding: 2px 4px;
-    font-size: 12px;
-    color: #666;
-  `;
-  drag.title = 'Arraste para mover';
-  btn.appendChild(drag);
-
-  let offsetX = 0,
-    offsetY = 0,
-    isDragging = false;
-  drag.onmousedown = (e) => {
-    e.stopPropagation();
-    isDragging = true;
-    offsetX = e.clientX - btn.getBoundingClientRect().left;
-    offsetY = e.clientY - btn.getBoundingClientRect().top;
-
-    document.onmousemove = (e) => {
-      if (!isDragging) return;
-
-      const newLeft = e.clientX - offsetX;
-      const newTop = e.clientY - offsetY;
-
-      const maxX = window.innerWidth - btn.offsetWidth;
-      const maxY = window.innerHeight - btn.offsetHeight;
-      const finalLeft = Math.max(0, Math.min(newLeft, maxX));
-      const finalTop = Math.max(0, Math.min(newTop, maxY));
-
-      btn.style.top = finalTop + 'px';
-      btn.style.left = finalLeft + 'px';
-      btn.style.bottom = 'auto';
-      btn.style.right = 'auto';
-    };
-
-    document.onmouseup = (e) => {
-      if (isDragging) {
-        isDragging = false;
-        const rect = btn.getBoundingClientRect();
-        saveButtonPosition(rect.top, rect.left);
-
-        const menu = document.getElementById('mr-menu');
-        if (menu && menu.style.visibility === 'visible') { // Verifica visibilidade para posicionar
-          positionMenu();
-        }
-      }
-      document.onmousemove = null;
-      document.onmouseup = null;
-    };
-  };
-
-  btn.onclick = (e) => {
-    if (!isDragging) {
-      e.stopPropagation();
-      toggleMenu();
-    }
-  };
-
-  document.body.appendChild(btn);
-  renderMenu();
-  renderEditor();
+// ── Injeção de estilos ────────────────────────────────────────
+function formatCustomerName(name) {
+  if (!name) return name;
+  if (name === name.toUpperCase())
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  return name;
 }
 
-function renderMenu() {
-  if (document.getElementById('mr-menu')) return;
-
-  const menu = document.createElement('div');
-  menu.id = 'mr-menu';
-  menu.style.cssText = `
-    position: fixed;
-    width: 300px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    z-index: 10001;
-    visibility: hidden; /* Controla visibilidade */
-    opacity: 0; /* Controla transparência */
-    transform: scale(0.95); /* Para efeito de zoom sutil (sem translate) */
-    transition: opacity 0.5s ease, transform 0.5s ease, visibility 0.5s; /* Transição mais suave (0.5s) */
-  `;
-
-  const header = document.createElement('div');
-  header.style.cssText = `
-    padding: 12px 16px;
-    border-bottom: 1px solid #eee;
-    background: #f8f9fa;
-    border-radius: 8px 8px 0 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  `;
-
-  const title = document.createElement('strong');
-  title.textContent = 'Mensagens Rápidas';
-  title.style.color = '#333';
-
-  const editBtn = document.createElement('button');
-  editBtn.textContent = '⚙️ Editar';
-  editBtn.style.cssText = `
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-  `;
-  editBtn.onclick = () => openEditor();
-
-  header.appendChild(title);
-  header.appendChild(editBtn);
-  menu.appendChild(header);
-
-  const content = document.createElement('div');
-  content.id = 'mr-menu-content';
-  content.style.padding = '8px';
-  content.style.maxHeight = 'calc(80vh - 50px)';
-  content.style.overflowY = 'auto';
-  menu.appendChild(content);
-
-  document.body.appendChild(menu);
-  updateMenuContent();
-}
-
-function positionMenu() {
-  const menu = document.getElementById('mr-menu');
-  const btn = document.getElementById('mr-button');
-
-  if (!menu || !btn) return;
-
-  const btnRect = btn.getBoundingClientRect();
-
-  // Temporarily make it visible/block to get accurate dimensions, but invisible to user
-  const originalVisibility = menu.style.visibility;
-  const originalOpacity = menu.style.opacity;
-  menu.style.visibility = 'hidden';
-  menu.style.opacity = '0';
-  menu.style.display = 'block'; // Make sure it's block for height calculation
-
-  const menuWidth = menu.offsetWidth; // Use offsetWidth/Height for calculated dimensions
-  const menuHeight = menu.offsetHeight;
-
-  // Restore original display/visibility
-  menu.style.display = 'block'; // Menu should always be block when visible
-  menu.style.visibility = originalVisibility;
-  menu.style.opacity = originalOpacity;
-
-  const windowWidth = window.innerWidth;
-  const windowHeight = window.innerHeight;
-
-  let left, top;
-  const padding = 10; // Padding from window edges
-
-  // Horizontal positioning: try right, then left, then center
-  if (btnRect.right + menuWidth + padding <= windowWidth) {
-    left = btnRect.right + padding;
-  } else if (btnRect.left - menuWidth - padding >= 0) {
-    left = btnRect.left - menuWidth - padding;
-  } else {
-    // Fallback to center if no side fits
-    left = Math.max(padding, (windowWidth - menuWidth) / 2);
-  }
-
-  // Vertical positioning:
-  // Prefer to align with the top of the button, if it fits below
-  if (btnRect.top + menuHeight + padding <= windowHeight) {
-    top = btnRect.top;
-  }
-  // Else, prefer to align with the bottom of the button, if it fits above
-  else if (btnRect.bottom - menuHeight - padding >= 0) {
-    top = btnRect.bottom - menuHeight;
-  }
-  // Otherwise, center it vertically within the available space, clamped by window edges
-  else {
-    top = Math.max(padding, (windowHeight - menuHeight) / 2);
-    top = Math.min(top, windowHeight - menuHeight - padding); // Ensure it doesn't go off bottom
-  }
-
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
-  menu.style.transformOrigin = 'center center';
-}
-
-// Function to open a category
-const openCategory = (currentCategoryDiv, subcategoriesDiv, arrow) => {
-    // Close the previously open category if it exists and is different from the current one
-    if (openCategoryDiv && openCategoryDiv !== currentCategoryDiv) {
-        const prevSubDiv = openCategoryDiv.querySelector('.subcategories-list');
-        const prevArrow = openCategoryDiv.querySelector('.arrow-icon');
-        if (prevSubDiv) {
-            prevSubDiv.style.maxHeight = '0';
-            prevSubDiv.style.opacity = '0';
-        }
-        if (prevArrow) prevArrow.style.transform = 'rotate(0deg)';
-    }
-
-    // Open the current category
-    subcategoriesDiv.style.maxHeight = '500px'; // Valor grande o suficiente para conter todas as subcategorias
-    subcategoriesDiv.style.opacity = '1';
-    arrow.style.transform = 'rotate(180deg)';
-    positionMenu(); // Recalcula a posição do menu
-    openCategoryDiv = currentCategoryDiv;
-};
-
-// Function to close a category
-const closeCategory = (subcategoriesDiv, arrow) => {
-    subcategoriesDiv.style.maxHeight = '0';
-    subcategoriesDiv.style.opacity = '0';
-    arrow.style.transform = 'rotate(0deg)';
-    positionMenu();
-    openCategoryDiv = null;
-};
-
-
-function updateMenuContent() {
-  const content = document.getElementById('mr-menu-content');
-  if (!content) return;
-
-  content.innerHTML = '';
-
-  if (Object.keys(messageData.categories).length === 0) {
-    const empty = document.createElement('div');
-    empty.style.cssText = `
-      text-align: center;
-      color: #666;
-      padding: 20px;
-      font-style: italic;
-    `;
-    empty.textContent = 'Nenhuma mensagem cadastrada. Clique em "Editar" para adicionar.';
-    content.appendChild(empty);
-    return;
-  }
-
-  const categories = Object.entries(messageData.categories);
-
-  categories.forEach(([categoryName, category]) => {
-    const categoryDiv = document.createElement('div');
-    categoryDiv.style.marginBottom = '8px';
-
-    const categoryBtn = document.createElement('div');
-    categoryBtn.style.cssText = `
-      padding: 8px 12px;
-      background: #f0f0f0;
-      color: #333;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-    `;
-
-    const categoryTextContainer = document.createElement('div');
-    categoryTextContainer.style.cssText = `
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    `;
-
-    const categoryIconSpan = document.createElement('span');
-    categoryIconSpan.textContent = category.icon || categoryIcons[categoryName] || categoryIcons['default'];
-    categoryIconSpan.style.color = category.color || '#333';
-    categoryIconSpan.style.fontSize = '18px';
-
-    const categoryNameSpan = document.createElement('span');
-    categoryNameSpan.textContent = categoryName;
-
-    categoryTextContainer.appendChild(categoryIconSpan);
-    categoryTextContainer.appendChild(categoryNameSpan);
-    categoryBtn.appendChild(categoryTextContainer);
-
-    const arrow = document.createElement('span');
-    arrow.textContent = '▼';
-    arrow.style.transition = 'transform 0.2s';
-    arrow.style.color = '#333';
-    arrow.classList.add('arrow-icon'); // Add class for easy selection
-    categoryBtn.appendChild(arrow);
-
-    const subcategoriesDiv = document.createElement('div');
-    subcategoriesDiv.style.cssText = `
-      margin-top: 4px;
-      margin-left: 12px;
-      overflow: hidden;
-      max-height: 0; /* Começa fechado */
-      opacity: 0; /* Começa invisível */
-      transition: max-height 0.5s ease-out, opacity 0.5s ease-out; /* Transição mais suave (0.5s) */
-    `;
-    subcategoriesDiv.classList.add('subcategories-list'); // Add class for easy selection
-
-    const subcategories = Object.entries(category.subcategories || {});
-
-    subcategories.forEach(([subName, subItem]) => {
-      const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
-      const subColor = (typeof subItem === 'object' && subItem.color) ? subItem.color : (category.color || '#007bff');
-
-      const subBtn = document.createElement('div');
-      subBtn.style.cssText = `
-        padding: 6px 12px;
-        background: white;
-        color: #333;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-bottom: 2px;
-        border: 1px solid ${subColor}; /* Contorno fino da mesma cor */
-        border-left: 5px solid ${subColor}; /* Borda esquerda maior (Aplicada DEPOIS para sobrescrever e garantir visibilidade) */
-      `;
-      subBtn.textContent = subName;
-
-      subBtn.onclick = (e) => {
-        e.stopPropagation();
-        insertMessage(subMessage);
-        toggleMenu(); // Fecha o menu principal após inserir a mensagem
-      };
-
-      subcategoriesDiv.appendChild(subBtn);
-    });
-
-    // Evento de click para abrir/fechar a categoria
-    categoryBtn.onclick = () => {
-      const isVisible = parseFloat(subcategoriesDiv.style.maxHeight) > 0; // Verifica se está "aberto"
-      if (isVisible) {
-        closeCategory(subcategoriesDiv, arrow);
-      } else {
-        openCategory(categoryDiv, subcategoriesDiv, arrow);
-      }
-    };
-
-    categoryDiv.appendChild(categoryBtn);
-    categoryDiv.appendChild(subcategoriesDiv);
-    content.appendChild(categoryDiv);
-  });
-}
-
-/**
- * Tries to extract the first name of the customer from the Mercado Livre page.
- * This function is a heuristic and might need adjustments based on actual Mercado Livre HTML changes.
- * It looks for common patterns where the customer's name might be displayed.
- * @returns {string} The first name of the customer, or an empty string if not found.
- */
 function getFirstNameFromPage() {
-  let customerName = '';
-
-  // Attempt 1: Look for the name within the user_header div, as provided by the user
-  let nameElement = document.querySelector('#user_header p');
-  if (nameElement) {
-    let nameText = nameElement.textContent.trim();
-    customerName = nameText.split(' ')[0]; // Get only the first name
-  }
-
-  // Attempt 2: Look for specific elements in Mercado Livre's chat or sales pages
-  // Common selectors for customer names:
-  // In a chat context, it might be in a header or a specific message bubble.
-  // In a sales detail page, it might be near the "Comprador" or "Vendedor" section.
-  if (!customerName) {
-    nameElement = document.querySelector('.andes-message-card__header__title span.andes-text_size_large');
-    if (nameElement) {
-      let nameText = nameElement.textContent.trim();
-      // Assuming the format is "Conversa com [Nome do Cliente]" or similar
-      const match = nameText.match(/Conversa com (.+)/);
-      if (match && match[1]) {
-        customerName = match[1].split(' ')[0]; // Get only the first name
-      } else {
-        // If it's just the name
-        customerName = nameText.split(' ')[0];
-      }
+  let n = '';
+  const sels = [
+    '#user_header p',
+    '.andes-message-card__header__title span.andes-text_size_large',
+    '[data-testid="buyer-name"]', '.buyer-info__name', '.user-info__name',
+  ];
+  for (const s of sels) {
+    const el = document.querySelector(s);
+    if (el) {
+      let t = el.textContent.trim();
+      const m = t.match(/Conversa com (.+)/);
+      n = (m ? m[1] : t).split(' ')[0];
+      if (n) break;
     }
   }
-
-  // Attempt 3: Look for elements with data attributes or specific classes on a transaction page
-  if (!customerName) {
-    nameElement = document.querySelector('[data-testid="buyer-name"], .buyer-info__name, .user-info__name');
-    if (nameElement) {
-      customerName = nameElement.textContent.trim().split(' ')[0];
-    }
+  if (!n) {
+    const lbl = Array.from(document.querySelectorAll('span,div,p'))
+      .find(el => el.textContent.includes('Comprador') || el.textContent.includes('Cliente'));
+    if (lbl?.nextElementSibling) n = lbl.nextElementSibling.textContent.trim().split(' ')[0];
   }
-
-  // Attempt 4: More generic approach, looking for common user profile links/spans
-  if (!customerName) {
-    nameElement = document.querySelector('a.nav-profile-menu-trigger span.nav-menu-label'); // For logged in user
-    if (nameElement) {
-      // This might get the seller's name, not the buyer's. Use with caution.
-      customerName = nameElement.textContent.trim().split(' ')[0];
-    }
-  }
-
-  // Fallback: If no specific element is found, try to find a common "Comprador" or "Cliente" label and get the adjacent text
-  if (!customerName) {
-      const buyerLabel = Array.from(document.querySelectorAll('span, div, p')).find(el => 
-          el.textContent.includes('Comprador') || el.textContent.includes('Cliente')
-      );
-      if (buyerLabel && buyerLabel.nextElementSibling) {
-          customerName = buyerLabel.nextElementSibling.textContent.trim().split(' ')[0];
-      }
-  }
-  
-  // Clean up the name (remove common prefixes/suffixes if any)
-  customerName = customerName.replace(/^(Sr\.|Sra\.)\s*/i, '').trim();
-
-  return customerName;
+  return n.replace(/^(Sr\.|Sra\.)\s*/i, '').trim();
 }
 
+function highlightVars(text) {
+  return text.replace(/\[([A-Z_]+)\]/g, '<span class="mr-var">[$1]</span>');
+}
 
+function extractVarTags(text) {
+  return [...new Set(text.match(/\[([A-Z_]+)\]/g) || [])];
+}
+
+function showToast(msg = 'Mensagem inserida! ✓') {
+  const t = document.getElementById('mr-toast');
+  if (!t) return;
+  t.querySelector('.mr-tmsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Inserção de mensagem ──────────────────────────────────────
 function insertMessage(message) {
-  const campo = document.querySelector('textarea.sc-textarea') ||
+  let final = message;
+  if (final.includes('[NOME_CLIENTE]')) {
+    const name = getFirstNameFromPage();
+    final = name
+      ? final.replace(/\[NOME_CLIENTE\]/g, formatCustomerName(name))
+      : final.replace(/\[NOME_CLIENTE\]/g, '').trim();
+  }
+  const campo =
+    document.querySelector('textarea.sc-textarea') ||
     document.querySelector('textarea') ||
     document.querySelector('[contenteditable="true"]') ||
     document.querySelector('input[type="text"]');
 
-  let finalMessage = message;
-
-  // Check if the message contains the [NOME_CLIENTE] placeholder
-  if (finalMessage.includes('[NOME_CLIENTE]')) {
-    const customerFirstName = getFirstNameFromPage();
-    if (customerFirstName) {
-      finalMessage = finalMessage.replace(/\[NOME_CLIENTE\]/g, customerFirstName);
+  if (campo) {
+    campo.focus();
+    if (campo.tagName === 'TEXTAREA' || campo.tagName === 'INPUT') {
+      campo.value = final;
+      campo.dispatchEvent(new Event('input',  { bubbles: true }));
+      campo.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
-      // If no name is found, remove the placeholder
-      finalMessage = finalMessage.replace(/\[NOME_CLIENTE\]/g, '').trim();
+      campo.textContent = final;
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    showToast('Mensagem inserida! ✓');
+  } else {
+    navigator.clipboard.writeText(final)
+      .then(() => showToast('Copiado para a área de transferência!'))
+      .catch(() => showToast('Não foi possível inserir.'));
+  }
+  hidePanel();
+}
+
+// ── Dados filtrados ───────────────────────────────────────────
+function getCategoryColor(catName, category) {
+  return category.color || '#3B82F6';
+}
+
+function getAllMessages() {
+  const results = [];
+  Object.entries(messageData.categories).forEach(([catName, cat]) => {
+    if (activeCategory && activeCategory !== catName) return;
+    Object.entries(cat.subcategories || {}).forEach(([subName, subItem]) => {
+      const msg   = typeof subItem === 'string' ? subItem : subItem.message;
+      const color = typeof subItem === 'object' && subItem.color ? subItem.color : getCategoryColor(catName, cat);
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!subName.toLowerCase().includes(q) && !msg.toLowerCase().includes(q)) return;
+      }
+      results.push({ catName, subName, message: msg, color });
+    });
+  });
+  return results;
+}
+
+// ── Render do painel ──────────────────────────────────────────
+function buildPanel() {
+  const existing = document.getElementById('mr-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'mr-panel';
+  if (isDarkTheme) panel.classList.add('dark');
+  positionPanel(panel);
+
+  panel.innerHTML = `
+    <div class="mr-hd">
+      <div class="mr-hd-l">
+        <span class="mr-title">Passo Largo</span>
+      </div>
+      <div class="mr-hd-r">
+        <div class="mr-tt" id="mr-tt" title="Alternar tema">
+          <span class="mr-tti sun">☀</span>
+          <span class="mr-tti moon">☽</span>
+        </div>
+        <button class="mr-ibtn" id="mr-close-btn" title="Fechar">✕</button>
+      </div>
+    </div>
+    <div class="mr-sw">
+      <div class="mr-s">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="mr-si" placeholder="Buscar mensagens..." autocomplete="off">
+      </div>
+    </div>
+    <div class="mr-cn-wrap">
+      <button class="mr-cn-arrow mr-cn-arrow-l" id="mr-cn-left">&#8249;</button>
+      <nav class="mr-cn" id="mr-cn"></nav>
+      <button class="mr-cn-arrow mr-cn-arrow-r" id="mr-cn-right">&#8250;</button>
+    </div>
+    <div class="mr-c" id="mr-c"></div>
+    <div class="mr-ft">
+      <button class="mr-bnew" id="mr-bnew">
+        <span style="font-size:13px;line-height:1">+</span> Nova Mensagem
+      </button>
+      <div class="mr-ftr">
+        <button class="mr-ibtn" id="mr-ie-btn" title="Importar / Exportar">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </button>
+        <button class="mr-ibtn" id="mr-cat-btn" title="Nova Categoria">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17h6M17 14v6"/></svg>
+        </button>
+        <button class="mr-ibtn" id="mr-settings-btn" title="Configurações">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.3.07-.62.07-.96s-.03-.66-.07-1l2.15-1.68c.19-.15.24-.42.12-.64l-2.04-3.53c-.12-.22-.39-.3-.61-.22l-2.53 1.02c-.53-.4-1.1-.74-1.72-.99L14.5 2.42A.49.49 0 0014 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.59-1.72.99L4.88 5.08c-.23-.09-.49 0-.61.22L2.23 8.83c-.13.22-.07.49.12.64L4.5 11.15c-.04.34-.07.67-.07 1s.03.65.07.96L2.35 14.8c-.19.15-.24.42-.12.64l2.04 3.53c.12.22.39.3.61.22l2.53-1.02c.53.4 1.1.74 1.72.99l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.59 1.72-.99l2.53 1.02c.23.09.49 0 .61-.22l2.04-3.53c.12-.22.07-.49-.12-.64l-2.15-1.69z"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  // Impede que cliques dentro do painel propaguem para o listener "fechar ao clicar fora"
+  panel.addEventListener('click', e => e.stopPropagation());
+
+  panel.querySelector('#mr-close-btn').onclick = hidePanel;
+
+  // Scroll horizontal na nav
+  const navEl = panel.querySelector('#mr-cn');
+
+  // Função de scroll suave reutilizável
+  function smoothScrollNav(amount) {
+    const start = navEl.scrollTop;
+    const end = start + amount;
+    const duration = 150;
+    const startTime = performance.now();
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      navEl.scrollTop = start + (end - start) * ease;
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
+  panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
+  navEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    smoothScrollNav((e.deltaY + e.deltaX) * 1.1);
+  }, { passive: false });
+  panel.querySelector('#mr-tt').onclick = () => {
+    isDarkTheme = !isDarkTheme;
+    panel.classList.toggle('dark', isDarkTheme);
+    localStorage.setItem('mr-theme', isDarkTheme ? 'dark' : 'light');
+  };
+  panel.querySelector('#mr-si').oninput = (e) => {
+    searchQuery = e.target.value.trim();
+    renderCards();
+  };
+  panel.querySelector('#mr-bnew').onclick   = () => openMessageModal(null, null);
+  panel.querySelector('#mr-cat-btn').onclick = openCatModal;
+  panel.querySelector('#mr-settings-btn').onclick = openSettingsPanel;
+  panel.querySelector('#mr-ie-btn').onclick  = openImportExportModal;
+
+  renderCatTabs();
+  renderCards();
+}
+
+function positionPanel(panel) {
+  const fab = document.getElementById('mr-fab');
+  if (!fab) { panel.style.bottom = '80px'; panel.style.right = '20px'; return; }
+  const rect = fab.getBoundingClientRect();
+  const ww = window.innerWidth, wh = window.innerHeight;
+  const pw = 360, ph = 570;
+  let left = rect.left - pw - 10;
+  if (left < 8) left = rect.right + 10;
+  if (left + pw > ww - 8) left = ww - pw - 8;
+  let top = rect.top;
+  if (top + ph > wh - 8) top = wh - ph - 8;
+  if (top < 8) top = 8;
+  panel.style.left = left+'px'; panel.style.top = top+'px';
+}
+
+// ── Category tabs ─────────────────────────────────────────────
+function renderCatTabs() {
+  const nav = document.getElementById('mr-cn');
+  if (!nav) return;
+  nav.innerHTML = '';
+
+  const total = Object.values(messageData.categories)
+    .reduce((s, c) => s + Object.keys(c.subcategories || {}).length, 0);
+
+  const allTab = document.createElement('div');
+  allTab.className = 'mr-ct' + (activeCategory === null ? ' active' : '');
+  allTab.innerHTML = `<span class="mr-ct-name">Todas</span><span class="mr-ccnt">${total}</span>`;
+  allTab.onclick = (e) => { e.stopPropagation(); activeCategory = null; renderCatTabs(); renderCards(); };
+  nav.appendChild(allTab);
+
+  Object.entries(messageData.categories).forEach(([catName, cat]) => {
+    const count = Object.keys(cat.subcategories || {}).length;
+    const color = getCategoryColor(catName, cat);
+    const tab = document.createElement('div');
+    tab.className = 'mr-ct' + (activeCategory === catName ? ' active' : '');
+    tab.innerHTML = `
+      <span class="mr-cdot" style="background:${activeCategory === catName ? 'rgba(255,255,255,.5)' : color}"></span>
+      <span class="mr-ct-name">${cat.icon || categoryIcons[catName] || categoryIcons.default} ${catName}</span>
+      <span class="mr-ccnt">${count}</span>
+    `;
+    tab.onclick = (e) => { e.stopPropagation(); activeCategory = catName; renderCatTabs(); renderCards(); };
+    nav.appendChild(tab);
+  });
+}
+
+// ── Cards ─────────────────────────────────────────────────────
+function renderCards() {
+  const content = document.getElementById('mr-c');
+  if (!content) return;
+  content.innerHTML = '';
+
+  const msgs = getAllMessages();
+
+  if (msgs.length === 0) {
+    content.innerHTML = `
+      <div class="mr-empty">
+        <div class="mr-ei">💬</div>
+        <div class="mr-et">${searchQuery ? 'Nenhum resultado' : 'Nenhuma mensagem'}</div>
+        <div class="mr-ed">${searchQuery ? 'Tente outro termo de busca.' : 'Clique em "+ Nova Mensagem" para começar.'}</div>
+      </div>`;
+    return;
+  }
+
+  msgs.forEach(({ catName, subName, message, color }) => {
+    const vars = extractVarTags(message);
+    const card = document.createElement('div');
+    card.className = 'mr-card';
+    card.innerHTML = `
+      <div class="mr-ci">
+        <div class="mr-cbar" style="background:${color}"></div>
+        <div class="mr-cbody">
+          <div class="mr-ctop">
+            <span class="mr-cname">${subName}</span>
+            <span class="mr-ccat">${catName}</span>
+          </div>
+          <div class="mr-cprev">${highlightVars(message)}</div>
+          <div class="mr-cft">
+            <div class="mr-ctags">
+              ${vars.map(v=>`<span class="mr-vtag">${v.replace(/[\[\]]/g,'')}</span>`).join('')}
+            </div>
+            <div class="mr-cact">
+              <button class="mr-btn mr-bg mr-edit">Editar</button>
+              <button class="mr-btn mr-bp mr-use">Usar</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    card.querySelector('.mr-use').onclick = e => { e.stopPropagation(); insertMessage(message); };
+    card.querySelector('.mr-edit').onclick = e => { e.stopPropagation(); openMessageModal(catName, subName); };
+    card.onclick = () => insertMessage(message);
+    content.appendChild(card);
+  });
+}
+
+// ── Panel show/hide ───────────────────────────────────────────
+function showPanel() {
+  let panel = document.getElementById('mr-panel');
+  if (!panel) buildPanel();
+  panel = document.getElementById('mr-panel');
+  searchQuery = '';
+  const si = panel.querySelector('#mr-si');
+  if (si) si.value = '';
+  positionPanel(panel);
+  renderCatTabs();
+  renderCards();
+  setTimeout(() => panel.classList.add('visible'), 10);
+}
+
+function hidePanel() {
+  const p = document.getElementById('mr-panel');
+  if (p) p.classList.remove('visible');
+}
+
+function togglePanel() {
+  const p = document.getElementById('mr-panel');
+  if (!p || !p.classList.contains('visible')) showPanel();
+  else hidePanel();
+}
+
+// ── Modal base ────────────────────────────────────────────────
+function createOverlay() {
+  const ov = document.createElement('div');
+  ov.className = 'mr-ov';
+  ov.innerHTML = `<div class="mr-modal" id="mr-modal-inner"></div>`;
+
+  // copia CSS vars do panel para a modal
+  const panel = document.getElementById('mr-panel');
+  if (panel) {
+    const cs = getComputedStyle(panel);
+    const vars = ['--bg','--bg2','--bg3','--bghov','--txt','--txt2','--txt3','--border',
+                  '--accent','--accenthov','--accentlt','--success','--danger','--dangerlt',
+                  '--sh-sm','--sh-md','--sh-lg','--r-sm','--r-md','--r-lg','--r-full','--tr'];
+    const modal = ov.querySelector('.mr-modal');
+    vars.forEach(v => modal.style.setProperty(v, cs.getPropertyValue(v)));
+  }
+
+  ov.onclick = e => { if (e.target === ov) closeOverlay(ov); };
+  ov.querySelector('.mr-modal').addEventListener('click', e => e.stopPropagation());
+  document.body.appendChild(ov);
+  setTimeout(() => ov.classList.add('active'), 10);
+  return ov;
+}
+
+function closeOverlay(ov) {
+  ov.classList.remove('active');
+  setTimeout(() => ov.remove(), 220);
+}
+
+// ── Modal: Nova/Editar Mensagem ───────────────────────────────
+function openMessageModal(editCatName, editSubName, defaultCat) {
+  const isEdit = editCatName !== null && editSubName !== null;
+  const ov = createOverlay();
+  const modal = ov.querySelector('#mr-modal-inner');
+
+  const catOpts = Object.keys(messageData.categories)
+    .map(c => `<option value="${c}" ${(c===editCatName||c===defaultCat)?'selected':''}>${c}</option>`)
+    .join('');
+
+  let currentMsg = '', currentColor = '#3B82F6';
+  if (isEdit) {
+    const sub = messageData.categories[editCatName]?.subcategories[editSubName];
+    if (sub) {
+      currentMsg   = typeof sub === 'string' ? sub : sub.message;
+      currentColor = typeof sub === 'object' && sub.color ? sub.color : currentColor;
     }
   }
+
+  const chips = AVAILABLE_VARS.map(v => `<span class="mr-vc">${v}</span>`).join('');
+
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">${isEdit ? 'Editar Mensagem' : 'Nova Mensagem'}</span>
+      <button class="mr-mc">✕</button>
+    </div>
+    <div class="mr-mb">
+      <div class="mr-fg">
+        <label class="mr-fl">Título</label>
+        <input class="mr-fi" id="mr-f-name" type="text" placeholder="Ex: Confirmação de envio" value="${isEdit ? escapeHtml(editSubName) : ''}">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Categoria</label>
+        <select class="mr-fs" id="mr-f-cat">
+          <option value="">Selecione uma categoria</option>
+          ${catOpts}
+        </select>
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Cor da barra lateral</label>
+        <input type="color" id="mr-f-color" value="${currentColor}"
+          style="width:100%;height:30px;padding:2px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg2);cursor:pointer">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Mensagem</label>
+        <textarea class="mr-fta" id="mr-f-msg" placeholder="Digite sua mensagem...">${isEdit ? escapeHtml(currentMsg) : ''}</textarea>
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Inserir variável (clique para adicionar)</label>
+        <div class="mr-vp">${chips}</div>
+      </div>
+      ${isEdit ? '<div id="mr-del-area"></div>' : ''}
+    </div>
+    <div class="mr-mft">
+      ${isEdit ? '<button class="mr-btn mr-bd" id="mr-f-del">Excluir</button>' : ''}
+      <button class="mr-btn mr-bg" id="mr-f-cancel">Cancelar</button>
+      <button class="mr-btn mr-bp" id="mr-f-save">Salvar</button>
+    </div>`;
+
+  modal.querySelector('.mr-mc').onclick      = () => closeOverlay(ov);
+  modal.querySelector('#mr-f-cancel').onclick = () => closeOverlay(ov);
+
+  modal.querySelectorAll('.mr-vc').forEach(chip => {
+    chip.onclick = () => {
+      const ta = modal.querySelector('#mr-f-msg');
+      const s = ta.selectionStart, e = ta.selectionEnd, v = chip.textContent;
+      ta.value = ta.value.slice(0,s) + v + ta.value.slice(e);
+      ta.focus(); ta.selectionStart = ta.selectionEnd = s + v.length;
+    };
+  });
+
+  modal.querySelector('#mr-f-save').onclick = () => {
+    const name  = modal.querySelector('#mr-f-name').value.trim();
+    const cat   = modal.querySelector('#mr-f-cat').value;
+    const msg   = modal.querySelector('#mr-f-msg').value.trim();
+    const color = modal.querySelector('#mr-f-color').value;
+    if (!name) { alert('Digite um título.'); return; }
+    if (!cat)  { alert('Selecione uma categoria.'); return; }
+    if (!msg)  { alert('A mensagem não pode ser vazia.'); return; }
+    if (isEdit && (editCatName !== cat || editSubName !== name)) {
+      delete messageData.categories[editCatName].subcategories[editSubName];
+    }
+    if (!messageData.categories[cat]) return;
+    messageData.categories[cat].subcategories[name] = { message: msg, color };
+    saveData(); refreshPanel(); closeOverlay(ov);
+    showToast(isEdit ? 'Mensagem atualizada!' : 'Mensagem criada!');
+  };
+
+  if (isEdit) {
+    modal.querySelector('#mr-f-del').onclick = () => {
+      const area = modal.querySelector('#mr-del-area');
+      area.innerHTML = `
+        <div class="mr-delbar">
+          <span>Tem certeza? Não pode ser desfeito.</span>
+          <div class="mr-delbar-act">
+            <button class="mr-btn mr-bg" id="del-no">Não</button>
+            <button class="mr-btn mr-bd" id="del-yes">Excluir</button>
+          </div>
+        </div>`;
+      area.querySelector('#del-no').onclick  = () => { area.innerHTML = ''; };
+      area.querySelector('#del-yes').onclick = () => {
+        delete messageData.categories[editCatName].subcategories[editSubName];
+        saveData(); refreshPanel(); closeOverlay(ov);
+        showToast('Mensagem excluída.');
+      };
+    };
+  }
+}
+
+// ── Modal: Nova Categoria ─────────────────────────────────────
+function openCatModal() {
+  const ov = createOverlay();
+  const modal = ov.querySelector('#mr-modal-inner');
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">Nova Categoria</span>
+      <button class="mr-mc">✕</button>
+    </div>
+    <div class="mr-mb">
+      <div class="mr-fg">
+        <label class="mr-fl">Nome</label>
+        <input class="mr-fi" id="mc-name" type="text" placeholder="Ex: Pós-venda">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Ícone (emoji)</label>
+        <input class="mr-fi" id="mc-icon" type="text" placeholder="Ex: ✅">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Cor</label>
+        <input type="color" id="mc-color" value="#3B82F6"
+          style="width:100%;height:30px;padding:2px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg2);cursor:pointer">
+      </div>
+    </div>
+    <div class="mr-mft">
+      <button class="mr-btn mr-bg" id="mc-cancel">Cancelar</button>
+      <button class="mr-btn mr-bp" id="mc-save">Criar Categoria</button>
+    </div>`;
+
+  modal.querySelector('.mr-mc').onclick   = () => closeOverlay(ov);
+  modal.querySelector('#mc-cancel').onclick = () => closeOverlay(ov);
+  modal.querySelector('#mc-save').onclick = () => {
+    const name  = modal.querySelector('#mc-name').value.trim();
+    const icon  = modal.querySelector('#mc-icon').value.trim();
+    const color = modal.querySelector('#mc-color').value;
+    if (!name) { alert('Digite um nome.'); return; }
+    if (messageData.categories[name]) { alert('Categoria já existe.'); return; }
+    messageData.categories[name] = {
+      subcategories: {}, color,
+      icon: icon || categoryIcons[name] || categoryIcons.default
+    };
+    saveData(); refreshPanel(); closeOverlay(ov);
+    showToast('Categoria criada!');
+  };
+}
+
+// ── Modal: Importar/Exportar ──────────────────────────────────
+function openImportExportModal() {
+  const ov = createOverlay();
+  const modal = ov.querySelector('#mr-modal-inner');
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">Importar / Exportar</span>
+      <button class="mr-mc">✕</button>
+    </div>
+    <div class="mr-mb">
+      <p style="font-size:12px;color:var(--txt2);line-height:1.5">
+        Exporte suas mensagens como JSON para backup. Ao importar, as mensagens atuais serão substituídas.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button class="mr-btn mr-bp" id="exp-btn" style="flex:1;padding:9px">↑ Exportar JSON</button>
+        <button class="mr-btn mr-bg" id="imp-btn" style="flex:1;padding:9px">↓ Importar JSON</button>
+      </div>
+      <input type="file" id="mr-file" accept=".json" style="display:none">
+    </div>
+    <div class="mr-mft">
+      <button class="mr-btn mr-bg" id="ie-close">Fechar</button>
+    </div>`;
+
+  modal.querySelector('.mr-mc').onclick   = () => closeOverlay(ov);
+  modal.querySelector('#ie-close').onclick = () => closeOverlay(ov);
+  modal.querySelector('#exp-btn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(messageData, null, 2));
+    a.download = 'backup-mensagens.json'; a.click();
+  };
+  modal.querySelector('#imp-btn').onclick = () => modal.querySelector('#mr-file').click();
+  modal.querySelector('#mr-file').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.categories) throw new Error('Formato inválido');
+        if (confirm('Substituir mensagens atuais?')) {
+          messageData = data; saveData(); refreshPanel();
+          closeOverlay(ov); showToast('Importado com sucesso!');
+        }
+      } catch (err) { alert('Erro: ' + err.message); }
+    };
+    reader.readAsText(file); e.target.value = '';
+  };
+}
+
+
+
+// ── Helpers ───────────────────────────────────────────────────
+function formatCustomerName(name) {
+  if (!name) return name;
+  if (name === name.toUpperCase())
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  return name;
+}
+
+function getFirstNameFromPage() {
+  let n = '';
+  const sels = [
+    '#user_header p',
+    '.andes-message-card__header__title span.andes-text_size_large',
+    '[data-testid="buyer-name"]', '.buyer-info__name', '.user-info__name',
+  ];
+  for (const s of sels) {
+    const el = document.querySelector(s);
+    if (el) {
+      let t = el.textContent.trim();
+      const m = t.match(/Conversa com (.+)/);
+      n = (m ? m[1] : t).split(' ')[0];
+      if (n) break;
+    }
+  }
+  if (!n) {
+    const lbl = Array.from(document.querySelectorAll('span,div,p'))
+      .find(el => el.textContent.includes('Comprador') || el.textContent.includes('Cliente'));
+    if (lbl?.nextElementSibling) n = lbl.nextElementSibling.textContent.trim().split(' ')[0];
+  }
+  return n.replace(/^(Sr\.|Sra\.)\s*/i, '').trim();
+}
+
+function highlightVars(text) {
+  return text.replace(/\[([A-Z_]+)\]/g, '<span class="mr-var">[$1]</span>');
+}
+
+function extractVarTags(text) {
+  return [...new Set(text.match(/\[([A-Z_]+)\]/g) || [])];
+}
+
+function showToast(msg = 'Mensagem inserida! ✓') {
+  const t = document.getElementById('mr-toast');
+  if (!t) return;
+  t.querySelector('.mr-tmsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Inserção de mensagem ──────────────────────────────────────
+function insertMessage(message) {
+  let final = message;
+  if (final.includes('[NOME_CLIENTE]')) {
+    const name = getFirstNameFromPage();
+    final = name
+      ? final.replace(/\[NOME_CLIENTE\]/g, formatCustomerName(name))
+      : final.replace(/\[NOME_CLIENTE\]/g, '').trim();
+  }
+  const campo =
+    document.querySelector('textarea.sc-textarea') ||
+    document.querySelector('textarea') ||
+    document.querySelector('[contenteditable="true"]') ||
+    document.querySelector('input[type="text"]');
 
   if (campo) {
     campo.focus();
-
     if (campo.tagName === 'TEXTAREA' || campo.tagName === 'INPUT') {
-      campo.value = finalMessage;
-      campo.dispatchEvent(new Event('input', {
-        bubbles: true
-      }));
-      campo.dispatchEvent(new Event('change', {
-        bubbles: true
-      }));
+      campo.value = final;
+      campo.dispatchEvent(new Event('input',  { bubbles: true }));
+      campo.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
-      campo.textContent = finalMessage;
-      campo.dispatchEvent(new Event('input', {
-        bubbles: true
-      }));
+      campo.textContent = final;
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    showToast('Mensagem inserida! ✓');
   } else {
-    navigator.clipboard.writeText(finalMessage).then(() => {
-      alert('Campo de texto não encontrado. Mensagem copiada para área de transferência.');
-    }).catch(() => {
-      alert('Não foi possível encontrar campo de texto ou copiar mensagem.');
-    });
+    navigator.clipboard.writeText(final)
+      .then(() => showToast('Copiado para a área de transferência!'))
+      .catch(() => showToast('Não foi possível inserir.'));
   }
+  hidePanel();
 }
 
-function toggleMenu() {
-  const menu = document.getElementById('mr-menu');
-  if (!menu) return;
-
-  const isVisible = menu.style.visibility === 'visible';
-
-  if (isVisible) {
-    menu.style.opacity = '0';
-    menu.style.transform = 'scale(0.95)';
-    menu.addEventListener('transitionend', function handler() {
-      menu.style.visibility = 'hidden';
-      menu.removeEventListener('transitionend', handler);
-    });
-
-    // Fecha qualquer subcategoria aberta quando o menu principal é fechado
-    if (openCategoryDiv) {
-        const prevSubDiv = openCategoryDiv.querySelector('.subcategories-list');
-        const prevArrow = openCategoryDiv.querySelector('.arrow-icon');
-        if (prevSubDiv) {
-            prevSubDiv.style.maxHeight = '0';
-            prevSubDiv.style.opacity = '0';
-        }
-        if (prevArrow) prevArrow.style.transform = 'rotate(0deg)';
-        openCategoryDiv = null; // Reseta a variável de rastreamento
-    }
-
-  } else {
-    menu.style.visibility = 'visible';
-    menu.style.opacity = '1';
-    menu.style.transform = 'scale(1)';
-    updateMenuContent();
-    positionMenu();
-  }
+// ── Dados filtrados ───────────────────────────────────────────
+function getCategoryColor(catName, category) {
+  return category.color || '#3B82F6';
 }
 
-function renderEditor() {
-  if (document.getElementById('mr-editor')) return;
+function getAllMessages() {
+  const results = [];
+  Object.entries(messageData.categories).forEach(([catName, cat]) => {
+    if (activeCategory && activeCategory !== catName) return;
+    Object.entries(cat.subcategories || {}).forEach(([subName, subItem]) => {
+      const msg   = typeof subItem === 'string' ? subItem : subItem.message;
+      const color = typeof subItem === 'object' && subItem.color ? subItem.color : getCategoryColor(catName, cat);
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!subName.toLowerCase().includes(q) && !msg.toLowerCase().includes(q)) return;
+      }
+      results.push({ catName, subName, message: msg, color });
+    });
+  });
+  return results;
+}
 
-  const editor = document.createElement('div');
-  editor.id = 'mr-editor';
-  editor.style.cssText = `
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 500px;
-    max-height: 80vh;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    display: none;
-    z-index: 10002;
-    overflow-y: auto;
-  `;
+// ── Render do painel ──────────────────────────────────────────
+function buildPanel() {
+  const existing = document.getElementById('mr-panel');
+  if (existing) existing.remove();
 
-  editor.innerHTML = `
-    <div style="padding: 16px; border-bottom: 1px solid #eee; background: #f8f9fa; border-radius: 8px 8px 0 0;">
-      <h3 style="margin: 0; color: #333;">Editor de Mensagens</h3>
-    </div>
-    <div style="padding: 16px;">
-      <div style="margin-bottom: 16px;">
-        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nova Categoria:</label>
-        <input type="text" id="new-category" placeholder="Nome da categoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Ícone da Categoria (emoji):</label>
-        <input type="text" id="new-category-icon" placeholder="Ex: ✍️, 💰, 🏠" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor do Ícone:</label>
-        <input type="color" id="new-category-color" value="#007bff" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
-        <button id="add-category" style="margin-top: 8px; background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Categoria</button>
+  const panel = document.createElement('div');
+  panel.id = 'mr-panel';
+  if (isDarkTheme) panel.classList.add('dark');
+  positionPanel(panel);
+
+  panel.innerHTML = `
+    <div class="mr-hd">
+      <div class="mr-hd-l">
+        <span class="mr-title">Passo Largo</span>
       </div>
-
-      <div style="margin-bottom: 16px;">
-        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Nova Subcategoria:</label>
-        <select id="category-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
-          <option value="">Selecione uma categoria</option>
-        </select>
-        <input type="text" id="new-subcategory" placeholder="Nome da subcategoria" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
-        <label style="display: block; margin-top: 8px; margin-bottom: 4px; font-weight: bold;">Cor da Linha Lateral (Subcat.):</label>
-        <input type="color" id="new-subcategory-color" value="#007bff" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; margin-bottom: 8px;">
-        <textarea id="subcategory-message" placeholder="Mensagem da subcategoria" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
-        <button id="add-subcategory" style="margin-top: 8px; background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Adicionar Subcategoria</button>
-      </div>
-
-      <div id="existing-items" style="margin-bottom: 16px;">
-        <h4 style="color: #333;">Itens Cadastrados: <small style="color: #666; font-weight: normal;">(Arraste para reordenar)</small></h4>
-        <div id="items-list"></div>
-      </div>
-
-      <div style="border-top: 1px solid #eee; padding: 16px 0; margin-bottom: 16px;">
-        <h4 style="color: #333; margin-top: 0;">Importar/Exportar:</h4>
-        <div style="display: flex; gap: 8px;">
-          <button id="export-data" style="background: #17a2b8; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; flex: 1;">Exportar Mensagens</button>
-          <button id="import-data" style="background: #6f42c1; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; flex: 1;">Importar Mensagens</button>
+      <div class="mr-hd-r">
+        <div class="mr-tt" id="mr-tt" title="Alternar tema">
+          <span class="mr-tti sun">☀</span>
+          <span class="mr-tti moon">☽</span>
         </div>
-        <input type="file" id="file-input" accept=".json" style="display: none;">
+        <button class="mr-ibtn" id="mr-close-btn" title="Fechar">✕</button>
       </div>
-
-      <div style="text-align: right; border-top: 1px solid #eee; padding-top: 16px;">
-        <button id="close-editor" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Fechar</button>
-        <button id="clear-all" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Limpar Tudo</button>
+    </div>
+    <div class="mr-sw">
+      <div class="mr-s">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="mr-si" placeholder="Buscar mensagens..." autocomplete="off">
+      </div>
+    </div>
+    <div class="mr-cn-wrap">
+      <button class="mr-cn-arrow mr-cn-arrow-l" id="mr-cn-left">&#8249;</button>
+      <nav class="mr-cn" id="mr-cn"></nav>
+      <button class="mr-cn-arrow mr-cn-arrow-r" id="mr-cn-right">&#8250;</button>
+    </div>
+    <div class="mr-c" id="mr-c"></div>
+    <div class="mr-ft">
+      <button class="mr-bnew" id="mr-bnew">
+        <span style="font-size:13px;line-height:1">+</span> Nova Mensagem
+      </button>
+      <div class="mr-ftr">
+        <button class="mr-ibtn" id="mr-ie-btn" title="Importar / Exportar">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </button>
+        <button class="mr-ibtn" id="mr-cat-btn" title="Nova Categoria">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17h6M17 14v6"/></svg>
+        </button>
+        <button class="mr-ibtn" id="mr-settings-btn" title="Configurações">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.3.07-.62.07-.96s-.03-.66-.07-1l2.15-1.68c.19-.15.24-.42.12-.64l-2.04-3.53c-.12-.22-.39-.3-.61-.22l-2.53 1.02c-.53-.4-1.1-.74-1.72-.99L14.5 2.42A.49.49 0 0014 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.59-1.72.99L4.88 5.08c-.23-.09-.49 0-.61.22L2.23 8.83c-.13.22-.07.49.12.64L4.5 11.15c-.04.34-.07.67-.07 1s.03.65.07.96L2.35 14.8c-.19.15-.24.42-.12.64l2.04 3.53c.12.22.39.3.61.22l2.53-1.02c.53.4 1.1.74 1.72.99l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.59 1.72-.99l2.53 1.02c.23.09.49 0 .61-.22l2.04-3.53c.12-.22.07-.49-.12-.64l-2.15-1.69z"/></svg>
+        </button>
       </div>
     </div>
   `;
 
-  document.body.appendChild(editor);
-  setupEditorEvents();
-}
+  document.body.appendChild(panel);
 
-function setupEditorEvents() {
-  document.getElementById('add-category').onclick = addCategory;
-  document.getElementById('add-subcategory').onclick = addSubcategory;
-  document.getElementById('close-editor').onclick = closeEditor;
-  document.getElementById('clear-all').onclick = clearAllData;
-  document.getElementById('export-data').onclick = exportData;
-  document.getElementById('import-data').onclick = () => document.getElementById('file-input').click();
+  // Impede que cliques dentro do painel propaguem para o listener "fechar ao clicar fora"
+  panel.addEventListener('click', e => e.stopPropagation());
 
-  document.getElementById('file-input').addEventListener('change', handleFileImport);
-}
+  panel.querySelector('#mr-close-btn').onclick = hidePanel;
 
-function exportData() {
-  const dataStr = JSON.stringify(messageData, null, 2);
-  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-  const exportFileDefaultName = 'backup-mensagens.json';
-  const linkElement = document.createElement('a');
-  linkElement.setAttribute('href', dataUri);
-  linkElement.setAttribute('download', exportFileDefaultName);
-  linkElement.click();
-}
+  // Scroll horizontal na nav
+  const navEl = panel.querySelector('#mr-cn');
 
-function handleFileImport(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const importedData = JSON.parse(e.target.result);
-      if (!importedData.categories) {
-        throw new Error('Formato de arquivo inválido');
-      }
-
-      for (const catName in importedData.categories) {
-        if (importedData.categories.hasOwnProperty(catName)) {
-          const category = importedData.categories[catName];
-          if (category.subcategories) {
-            for (const subName in category.subcategories) {
-              if (category.subcategories.hasOwnProperty(subName)) {
-                let subItem = category.subcategories[subName];
-                // Ensure subItem is an object with message and color
-                if (typeof subItem === 'string') {
-                  category.subcategories[subName] = { message: subItem, color: '#007bff' };
-                }
-                if (!category.subcategories[subName].color) {
-                  category.subcategories[subName].color = '#007bff';
-                }
-              }
-            }
-          }
-          if (!category.color) {
-            category.color = '#007bff';
-          }
-          if (!category.icon) {
-            category.icon = categoryIcons[catName] || categoryIcons['default'];
-          }
-        }
-      }
-
-      if (confirm('Deseja substituir suas mensagens atuais pelas mensagens importadas?')) {
-        messageData = importedData;
-        saveData();
-        updateCategorySelect();
-        updateItemsList();
-        alert('Mensagens importadas com sucesso!');
-      }
-    } catch (error) {
-      alert('Erro ao importar arquivo: ' + error.message);
+  // Função de scroll suave reutilizável
+  function smoothScrollNav(amount) {
+    const start = navEl.scrollTop;
+    const end = start + amount;
+    const duration = 150;
+    const startTime = performance.now();
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      navEl.scrollTop = start + (end - start) * ease;
+      if (progress < 1) requestAnimationFrame(step);
     }
-  };
-  reader.readAsText(file);
-  event.target.value = ''; // Clear the file input
-}
-
-
-function openEditor() {
-  const editor = document.getElementById('mr-editor');
-  if (!editor) return;
-  editor.style.display = 'block';
-  updateCategorySelect();
-  updateItemsList();
-  toggleMenu(); // Fecha o menu principal ao abrir o editor
-}
-
-function closeEditor() {
-  const editor = document.getElementById('mr-editor');
-  if (editor) {
-    editor.style.display = 'none';
+    requestAnimationFrame(step);
   }
+
+  panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
+  panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
+  navEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    smoothScrollNav((e.deltaY + e.deltaX) * 1.1);
+  }, { passive: false });
+  panel.querySelector('#mr-tt').onclick = () => {
+    isDarkTheme = !isDarkTheme;
+    panel.classList.toggle('dark', isDarkTheme);
+    localStorage.setItem('mr-theme', isDarkTheme ? 'dark' : 'light');
+  };
+  panel.querySelector('#mr-si').oninput = (e) => {
+    searchQuery = e.target.value.trim();
+    renderCards();
+  };
+  panel.querySelector('#mr-bnew').onclick   = () => openMessageModal(null, null);
+  panel.querySelector('#mr-cat-btn').onclick = openCatModal;
+  panel.querySelector('#mr-settings-btn').onclick = openSettingsPanel;
+  panel.querySelector('#mr-ie-btn').onclick  = openImportExportModal;
+
+  renderCatTabs();
+  renderCards();
 }
 
-function updateCategorySelect() {
-  const select = document.getElementById('category-select');
-  if (!select) return;
+function positionPanel(panel) {
+  const fab = document.getElementById('mr-fab');
+  if (!fab) { panel.style.bottom = '80px'; panel.style.right = '20px'; return; }
+  const rect = fab.getBoundingClientRect();
+  const ww = window.innerWidth, wh = window.innerHeight;
+  const pw = 360, ph = 570;
+  let left = rect.left - pw - 10;
+  if (left < 8) left = rect.right + 10;
+  if (left + pw > ww - 8) left = ww - pw - 8;
+  let top = rect.top;
+  if (top + ph > wh - 8) top = wh - ph - 8;
+  if (top < 8) top = 8;
+  panel.style.left = left+'px'; panel.style.top = top+'px';
+}
 
-  select.innerHTML = '<option value="">Selecione uma categoria</option>';
-  Object.keys(messageData.categories).forEach(categoryName => {
-    const option = document.createElement('option');
-    option.value = categoryName;
-    option.textContent = categoryName;
-    select.appendChild(option);
+// ── Category tabs ─────────────────────────────────────────────
+function renderCatTabs() {
+  const nav = document.getElementById('mr-cn');
+  if (!nav) return;
+  nav.innerHTML = '';
+
+  const total = Object.values(messageData.categories)
+    .reduce((s, c) => s + Object.keys(c.subcategories || {}).length, 0);
+
+  const allTab = document.createElement('div');
+  allTab.className = 'mr-ct' + (activeCategory === null ? ' active' : '');
+  allTab.innerHTML = `<span class="mr-ct-name">Todas</span><span class="mr-ccnt">${total}</span>`;
+  allTab.onclick = (e) => { e.stopPropagation(); activeCategory = null; renderCatTabs(); renderCards(); };
+  nav.appendChild(allTab);
+
+  Object.entries(messageData.categories).forEach(([catName, cat]) => {
+    const count = Object.keys(cat.subcategories || {}).length;
+    const color = getCategoryColor(catName, cat);
+    const tab = document.createElement('div');
+    tab.className = 'mr-ct' + (activeCategory === catName ? ' active' : '');
+    tab.innerHTML = `
+      <span class="mr-cdot" style="background:${activeCategory === catName ? 'rgba(255,255,255,.5)' : color}"></span>
+      <span class="mr-ct-name">${cat.icon || categoryIcons[catName] || categoryIcons.default} ${catName}</span>
+      <span class="mr-ccnt">${count}</span>
+    `;
+    tab.onclick = (e) => { e.stopPropagation(); activeCategory = catName; renderCatTabs(); renderCards(); };
+    nav.appendChild(tab);
   });
 }
 
-function addCategory() {
-  const input = document.getElementById('new-category');
-  const iconInput = document.getElementById('new-category-icon');
-  const colorInput = document.getElementById('new-category-color');
-  const categoryName = input.value.trim();
-  const categoryIcon = iconInput.value.trim();
-  const categoryColor = colorInput.value;
+// ── Cards ─────────────────────────────────────────────────────
+function renderCards() {
+  const content = document.getElementById('mr-c');
+  if (!content) return;
+  content.innerHTML = '';
 
-  if (!categoryName) {
-    alert('Digite um nome para a categoria');
-    return;
-  }
-  if (messageData.categories[categoryName]) {
-    alert('Categoria já existe');
-    return;
-  }
+  const msgs = getAllMessages();
 
-  messageData.categories[categoryName] = {
-    subcategories: {},
-    color: categoryColor,
-    icon: categoryIcon || categoryIcons[categoryName] || categoryIcons['default']
-  };
-  saveData();
-  input.value = '';
-  iconInput.value = '';
-  colorInput.value = '#007bff';
-  updateCategorySelect();
-  updateItemsList();
-  alert('Categoria adicionada com sucesso!');
-}
-
-function addSubcategory() {
-  const categorySelect = document.getElementById('category-select');
-  const subcategoryInput = document.getElementById('new-subcategory');
-  const messageTextarea = document.getElementById('subcategory-message');
-  const subcategoryColorInput = document.getElementById('new-subcategory-color');
-
-  const categoryName = categorySelect.value;
-  const subcategoryName = subcategoryInput.value.trim();
-  const message = messageTextarea.value.trim();
-  const subcategoryColor = subcategoryColorInput.value;
-
-  if (!categoryName) {
-    alert('Selecione uma categoria');
-    return;
-  }
-  if (!subcategoryName) {
-    alert('Digite um nome para a subcategoria');
-    return;
-  }
-  if (!message) {
-    alert('Digite uma mensagem para a subcategoria');
-    return;
-  }
-  if (messageData.categories[categoryName].subcategories[subcategoryName]) {
-    alert('Subcategoria já existe');
+  if (msgs.length === 0) {
+    content.innerHTML = `
+      <div class="mr-empty">
+        <div class="mr-ei">💬</div>
+        <div class="mr-et">${searchQuery ? 'Nenhum resultado' : 'Nenhuma mensagem'}</div>
+        <div class="mr-ed">${searchQuery ? 'Tente outro termo de busca.' : 'Clique em "+ Nova Mensagem" para começar.'}</div>
+      </div>`;
     return;
   }
 
-  messageData.categories[categoryName].subcategories[subcategoryName] = {
-    message: message,
-    color: subcategoryColor
-  };
-  saveData();
-  subcategoryInput.value = '';
-  messageTextarea.value = '';
-  subcategoryColorInput.value = '#007bff';
-  updateItemsList();
-  alert('Subcategoria adicionada com sucesso!');
-}
+  msgs.forEach(({ catName, subName, message, color }) => {
+    const vars = extractVarTags(message);
+    const card = document.createElement('div');
+    card.className = 'mr-card';
+    card.innerHTML = `
+      <div class="mr-ci">
+        <div class="mr-cbar" style="background:${color}"></div>
+        <div class="mr-cbody">
+          <div class="mr-ctop">
+            <span class="mr-cname">${subName}</span>
+            <span class="mr-ccat">${catName}</span>
+          </div>
+          <div class="mr-cprev">${highlightVars(message)}</div>
+          <div class="mr-cft">
+            <div class="mr-ctags">
+              ${vars.map(v=>`<span class="mr-vtag">${v.replace(/[\[\]]/g,'')}</span>`).join('')}
+            </div>
+            <div class="mr-cact">
+              <button class="mr-btn mr-bg mr-edit">Editar</button>
+              <button class="mr-btn mr-bp mr-use">Usar</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
 
-function updateItemsList() {
-  const list = document.getElementById('items-list');
-  if (!list) return;
-
-  list.innerHTML = '';
-
-  Object.keys(messageData.categories).forEach(categoryName => {
-    const category = messageData.categories[categoryName];
-
-    const categoryDiv = document.createElement('div');
-    categoryDiv.style.cssText = `
-      margin-bottom: 12px;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #f8f9fa;
-      color: #333;
-    `;
-    categoryDiv.draggable = true;
-    categoryDiv.dataset.category = categoryName;
-
-    categoryDiv.addEventListener('dragstart', (e) => {
-      draggedItem = categoryName;
-      e.target.style.opacity = '0.5';
-      e.target.style.transform = 'rotate(2deg)';
-    });
-
-    categoryDiv.addEventListener('dragend', (e) => {
-      e.target.style.opacity = '1';
-      e.target.style.transform = 'none';
-      draggedItem = null;
-      draggedOverItem = null;
-    });
-
-    categoryDiv.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (draggedItem && draggedItem !== categoryName) {
-        draggedOverItem = categoryName;
-        e.target.style.borderTop = '3px solid #007bff';
-      }
-    });
-
-    categoryDiv.addEventListener('dragleave', (e) => {
-      e.target.style.borderTop = '1px solid #ddd';
-    });
-
-    categoryDiv.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.target.style.borderTop = '1px solid #ddd';
-      if (draggedItem && draggedOverItem && draggedItem !== draggedOverItem) {
-        const categoriesArray = Object.entries(messageData.categories);
-        const draggedIndex = categoriesArray.findIndex(([name]) => name === draggedItem);
-        const overIndex = categoriesArray.findIndex(([name]) => name === draggedOverItem);
-
-        const [removed] = categoriesArray.splice(draggedIndex, 1);
-        categoriesArray.splice(overIndex, 0, removed);
-
-        messageData.categories = {};
-        categoriesArray.forEach(([name, data]) => {
-          messageData.categories[name] = data;
-        });
-
-        saveData();
-        updateItemsList();
-      }
-      draggedItem = null;
-      draggedOverItem = null;
-    });
-
-
-    const categoryHeader = document.createElement('div');
-    categoryHeader.style.cssText = `
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      cursor: move;
-    `;
-
-    const categoryTitleContainer = document.createElement('div');
-    categoryTitleContainer.style.cssText = `
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    `;
-
-    const categoryIconSpan = document.createElement('span');
-    categoryIconSpan.textContent = category.icon || categoryIcons[categoryName] || categoryIcons['default'];
-    categoryIconSpan.style.color = category.color || '#007bff';
-    categoryIconSpan.style.fontSize = '18px';
-
-    const categoryNameSpan = document.createElement('strong');
-    categoryNameSpan.textContent = categoryName;
-
-    categoryTitleContainer.appendChild(categoryIconSpan);
-    categoryTitleContainer.appendChild(categoryNameSpan);
-    categoryHeader.appendChild(categoryTitleContainer);
-
-
-    const categoryActions = document.createElement('div');
-    categoryActions.style.cssText = `
-      display: flex;
-      gap: 4px;
-    `;
-
-    const editCategoryBtn = document.createElement('button');
-    editCategoryBtn.textContent = '✏️';
-    editCategoryBtn.title = 'Editar Categoria';
-    editCategoryBtn.style.cssText = `
-      background: #ffc107;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    `;
-    editCategoryBtn.onclick = (e) => {
-      e.stopPropagation();
-      editCategory(categoryName);
-    };
-    categoryActions.appendChild(editCategoryBtn);
-
-    const deleteCategoryBtn = document.createElement('button');
-    deleteCategoryBtn.textContent = '🗑️';
-    deleteCategoryBtn.title = 'Excluir Categoria';
-    deleteCategoryBtn.style.cssText = `
-      background: #dc3545;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    `;
-    deleteCategoryBtn.onclick = (e) => {
-      e.stopPropagation();
-      deleteCategory(categoryName);
-    };
-    categoryActions.appendChild(deleteCategoryBtn);
-
-    categoryHeader.appendChild(categoryActions);
-    categoryDiv.appendChild(categoryHeader);
-
-    const subcategoriesList = document.createElement('div');
-    subcategoriesList.style.marginTop = '8px';
-    subcategoriesList.classList.add('ml-messages-list'); // Adiciona classe para customização do scrollbar
-
-    Object.entries(category.subcategories).forEach(([subName, subItem]) => {
-      const subMessage = typeof subItem === 'string' ? subItem : subItem.message;
-      const subColor = (typeof subItem === 'object' && subItem.color) ? subItem.color : (category.color || '#007bff');
-
-      const subDiv = document.createElement('div');
-      subDiv.style.cssText = `
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 6px 8px;
-        background: white;
-        border: 1px solid #eee;
-        border-left: 5px solid ${subColor};
-        border-radius: 4px;
-        margin-bottom: 4px;
-        cursor: move;
-      `;
-      subDiv.draggable = true;
-      subDiv.dataset.category = categoryName;
-      subDiv.dataset.subcategory = subName;
-
-      subDiv.addEventListener('dragstart', (e) => {
-        draggedSubItem = { category: categoryName, subcategory: subName };
-        e.target.style.opacity = '0.5';
-        e.target.style.transform = 'rotate(2deg)';
-      });
-
-      subDiv.addEventListener('dragend', (e) => {
-        e.target.style.opacity = '1';
-        e.target.style.transform = 'none';
-        draggedSubItem = null;
-        draggedOverSubItem = null;
-      });
-
-      subDiv.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (draggedSubItem && draggedSubItem.category === categoryName && draggedSubItem.subcategory !== subName) {
-          draggedOverSubItem = { category: categoryName, subcategory: subName };
-          e.target.style.borderTop = '3px solid #007bff';
-        }
-      });
-
-      subDiv.addEventListener('dragleave', (e) => {
-        e.target.style.borderTop = '1px solid #eee';
-      });
-
-      subDiv.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.target.style.borderTop = '1px solid #eee';
-        if (draggedSubItem && draggedOverSubItem && draggedSubItem.category === draggedOverSubItem.category && draggedSubItem.subcategory !== draggedOverSubItem.subcategory) {
-          const subcategoriesArray = Object.entries(messageData.categories[categoryName].subcategories);
-          const draggedIndex = subcategoriesArray.findIndex(([name]) => name === draggedSubItem.subcategory);
-          const overIndex = subcategoriesArray.findIndex(([name]) => name === draggedOverSubItem.subcategory);
-
-          const [removed] = subcategoriesArray.splice(draggedIndex, 1);
-          subcategoriesArray.splice(overIndex, 0, removed);
-
-          messageData.categories[categoryName].subcategories = {};
-          subcategoriesArray.forEach(([name, data]) => {
-            messageData.categories[categoryName].subcategories[name] = data;
-          });
-
-          saveData();
-          updateItemsList();
-        }
-        draggedSubItem = null;
-        draggedOverSubItem = null;
-      });
-
-      const subTextContainer = document.createElement('div');
-      subTextContainer.textContent = subName;
-      subTextContainer.style.flex = '1';
-      subTextContainer.style.cursor = 'pointer';
-      subTextContainer.onclick = () => {
-        insertMessage(subMessage);
-        toggleMenu();
-      };
-
-      const subActions = document.createElement('div');
-      subActions.style.display = 'flex';
-      subActions.style.gap = '4px';
-
-      const editSubBtn = document.createElement('button');
-      editSubBtn.textContent = '✏️';
-      editSubBtn.title = 'Editar Subcategoria';
-      editSubBtn.style.cssText = `
-        background: #ffc107;
-        color: white;
-        border: none;
-        padding: 2px 6px;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 10px;
-      `;
-      editSubBtn.onclick = (e) => {
-        e.stopPropagation();
-        editSubcategory(categoryName, subName, subMessage, subColor);
-      };
-      subActions.appendChild(editSubBtn);
-
-      const deleteSubBtn = document.createElement('button');
-      deleteSubBtn.textContent = '🗑️';
-      deleteSubBtn.title = 'Excluir Subcategoria';
-      deleteSubBtn.style.cssText = `
-        background: #dc3545;
-        color: white;
-        border: none;
-        padding: 2px 6px;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 10px;
-      `;
-      deleteSubBtn.onclick = (e) => {
-        e.stopPropagation();
-        deleteSubcategory(categoryName, subName);
-      };
-      subActions.appendChild(deleteSubBtn);
-
-      subDiv.appendChild(subTextContainer);
-      subDiv.appendChild(subActions);
-      subcategoriesList.appendChild(subDiv);
-    });
-
-    categoryDiv.appendChild(subcategoriesList);
-    list.appendChild(categoryDiv);
+    card.querySelector('.mr-use').onclick = e => { e.stopPropagation(); insertMessage(message); };
+    card.querySelector('.mr-edit').onclick = e => { e.stopPropagation(); openMessageModal(catName, subName); };
+    card.onclick = () => insertMessage(message);
+    content.appendChild(card);
   });
 }
 
-function editCategory(categoryName) {
-  const category = messageData.categories[categoryName];
-  if (!category) return;
+// ── Panel show/hide ───────────────────────────────────────────
+function showPanel() {
+  let panel = document.getElementById('mr-panel');
+  if (!panel) buildPanel();
+  panel = document.getElementById('mr-panel');
+  searchQuery = '';
+  const si = panel.querySelector('#mr-si');
+  if (si) si.value = '';
+  positionPanel(panel);
+  renderCatTabs();
+  renderCards();
+  setTimeout(() => panel.classList.add('visible'), 10);
+}
 
-  const modal = document.createElement('div');
-  modal.id = 'edit-category-modal';
-  modal.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10003;
-  `;
+function hidePanel() {
+  const p = document.getElementById('mr-panel');
+  if (p) p.classList.remove('visible');
+}
 
-  const content = document.createElement('div');
-  content.style.cssText = `
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-    width: 400px;
-    max-width: 90%;
-  `;
+function togglePanel() {
+  const p = document.getElementById('mr-panel');
+  if (!p || !p.classList.contains('visible')) showPanel();
+  else hidePanel();
+}
 
-  content.innerHTML = `
-    <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">Editar Categoria: ${categoryName}</h3>
-    <div style="margin-bottom: 10px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Nome:</label>
-      <input type="text" id="edit-category-name" value="${categoryName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+// ── Modal base ────────────────────────────────────────────────
+function createOverlay() {
+  const ov = document.createElement('div');
+  ov.className = 'mr-ov';
+  ov.innerHTML = `<div class="mr-modal" id="mr-modal-inner"></div>`;
+
+  // copia CSS vars do panel para a modal
+  const panel = document.getElementById('mr-panel');
+  if (panel) {
+    const cs = getComputedStyle(panel);
+    const vars = ['--bg','--bg2','--bg3','--bghov','--txt','--txt2','--txt3','--border',
+                  '--accent','--accenthov','--accentlt','--success','--danger','--dangerlt',
+                  '--sh-sm','--sh-md','--sh-lg','--r-sm','--r-md','--r-lg','--r-full','--tr'];
+    const modal = ov.querySelector('.mr-modal');
+    vars.forEach(v => modal.style.setProperty(v, cs.getPropertyValue(v)));
+  }
+
+  ov.onclick = e => { if (e.target === ov) closeOverlay(ov); };
+  ov.querySelector('.mr-modal').addEventListener('click', e => e.stopPropagation());
+  document.body.appendChild(ov);
+  setTimeout(() => ov.classList.add('active'), 10);
+  return ov;
+}
+
+function closeOverlay(ov) {
+  ov.classList.remove('active');
+  setTimeout(() => ov.remove(), 220);
+}
+
+// ── Modal: Nova/Editar Mensagem ───────────────────────────────
+function openMessageModal(editCatName, editSubName, defaultCat, fromSettings, onSave) {
+  const isEdit = editCatName !== null && editSubName !== null;
+  const ov = createOverlay();
+  if (fromSettings) {
+    ov.style.zIndex = '1000010';
+    const inner = ov.querySelector('#mr-modal-inner');
+    if (inner) inner.style.zIndex = '1000011';
+  }
+  const modal = ov.querySelector('#mr-modal-inner');
+
+  const catOpts = Object.keys(messageData.categories)
+    .map(c => `<option value="${c}" ${(c===editCatName||c===defaultCat)?'selected':''}>${c}</option>`)
+    .join('');
+
+  let currentMsg = '', currentColor = '#3B82F6';
+  if (isEdit) {
+    const sub = messageData.categories[editCatName]?.subcategories[editSubName];
+    if (sub) {
+      currentMsg   = typeof sub === 'string' ? sub : sub.message;
+      currentColor = typeof sub === 'object' && sub.color ? sub.color : currentColor;
+    }
+  }
+
+  const chips = AVAILABLE_VARS.map(v => `<span class="mr-vc">${v}</span>`).join('');
+
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">${isEdit ? 'Editar Mensagem' : 'Nova Mensagem'}</span>
+      <button class="mr-mc">✕</button>
     </div>
-    <div style="margin-bottom: 10px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Ícone (emoji):</label>
-      <input type="text" id="edit-category-icon" value="${category.icon || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <div class="mr-mb">
+      <div class="mr-fg">
+        <label class="mr-fl">Título</label>
+        <input class="mr-fi" id="mr-f-name" type="text" placeholder="Ex: Confirmação de envio" value="${isEdit ? escapeHtml(editSubName) : ''}">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Categoria</label>
+        <select class="mr-fs" id="mr-f-cat">
+          <option value="">Selecione uma categoria</option>
+          ${catOpts}
+        </select>
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Cor da barra lateral</label>
+        <input type="color" id="mr-f-color" value="${currentColor}"
+          style="width:100%;height:30px;padding:2px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg2);cursor:pointer">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Mensagem</label>
+        <textarea class="mr-fta" id="mr-f-msg" placeholder="Digite sua mensagem...">${isEdit ? escapeHtml(currentMsg) : ''}</textarea>
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Inserir variável (clique para adicionar)</label>
+        <div class="mr-vp">${chips}</div>
+      </div>
+      ${isEdit ? '<div id="mr-del-area"></div>' : ''}
     </div>
-    <div style="margin-bottom: 20px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Cor:</label>
-      <input type="color" id="edit-category-color" value="${category.color || '#007bff'}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
-    </div>
-    <div style="text-align: right;">
-      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancelar</button>
-      <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
-    </div>
-  `;
+    <div class="mr-mft">
+      ${isEdit ? '<button class="mr-btn mr-bd" id="mr-f-del">Excluir</button>' : ''}
+      <button class="mr-btn mr-bg" id="mr-f-cancel">Cancelar</button>
+      <button class="mr-btn mr-bp" id="mr-f-save">Salvar</button>
+    </div>`;
 
-  modal.appendChild(content);
-  document.body.appendChild(modal);
+  modal.querySelector('.mr-mc').onclick      = () => closeOverlay(ov);
+  modal.querySelector('#mr-f-cancel').onclick = () => closeOverlay(ov);
 
-  document.getElementById('cancel-edit').onclick = () => {
-    document.body.removeChild(modal);
+  modal.querySelectorAll('.mr-vc').forEach(chip => {
+    chip.onclick = () => {
+      const ta = modal.querySelector('#mr-f-msg');
+      const s = ta.selectionStart, e = ta.selectionEnd, v = chip.textContent;
+      ta.value = ta.value.slice(0,s) + v + ta.value.slice(e);
+      ta.focus(); ta.selectionStart = ta.selectionEnd = s + v.length;
+    };
+  });
+
+  modal.querySelector('#mr-f-save').onclick = () => {
+    const name  = modal.querySelector('#mr-f-name').value.trim();
+    const cat   = modal.querySelector('#mr-f-cat').value;
+    const msg   = modal.querySelector('#mr-f-msg').value.trim();
+    const color = modal.querySelector('#mr-f-color').value;
+    if (!name) { alert('Digite um título.'); return; }
+    if (!cat)  { alert('Selecione uma categoria.'); return; }
+    if (!msg)  { alert('A mensagem não pode ser vazia.'); return; }
+    if (isEdit && (editCatName !== cat || editSubName !== name)) {
+      delete messageData.categories[editCatName].subcategories[editSubName];
+    }
+    if (!messageData.categories[cat]) return;
+    messageData.categories[cat].subcategories[name] = { message: msg, color };
+    saveData(); refreshPanel(); closeOverlay(ov);
+    if (onSave) onSave();
+    showToast(isEdit ? 'Mensagem atualizada!' : 'Mensagem criada!');
   };
 
-  document.getElementById('save-edit').onclick = () => {
-    const newName = document.getElementById('edit-category-name').value.trim();
-    const newIcon = document.getElementById('edit-category-icon').value.trim();
-    const newColor = document.getElementById('edit-category-color').value;
+  if (isEdit) {
+    modal.querySelector('#mr-f-del').onclick = () => {
+      const area = modal.querySelector('#mr-del-area');
+      area.innerHTML = `
+        <div class="mr-delbar">
+          <span>Tem certeza? Não pode ser desfeito.</span>
+          <div class="mr-delbar-act">
+            <button class="mr-btn mr-bg" id="del-no">Não</button>
+            <button class="mr-btn mr-bd" id="del-yes">Excluir</button>
+          </div>
+        </div>`;
+      area.querySelector('#del-no').onclick  = () => { area.innerHTML = ''; };
+      area.querySelector('#del-yes').onclick = () => {
+        delete messageData.categories[editCatName].subcategories[editSubName];
+        saveData(); refreshPanel(); closeOverlay(ov);
+        if (onSave) onSave();
+        showToast('Mensagem excluída.');
+      };
+    };
+  }
+}
 
-    if (!newName) {
-      alert('O nome da categoria não pode ser vazio.');
-      return;
-    }
+// ── Modal: Nova Categoria ─────────────────────────────────────
+function openCatModal() {
+  const ov = createOverlay();
+  const modal = ov.querySelector('#mr-modal-inner');
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">Nova Categoria</span>
+      <button class="mr-mc">✕</button>
+    </div>
+    <div class="mr-mb">
+      <div class="mr-fg">
+        <label class="mr-fl">Nome</label>
+        <input class="mr-fi" id="mc-name" type="text" placeholder="Ex: Pós-venda">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Ícone (emoji)</label>
+        <input class="mr-fi" id="mc-icon" type="text" placeholder="Ex: ✅">
+      </div>
+      <div class="mr-fg">
+        <label class="mr-fl">Cor</label>
+        <input type="color" id="mc-color" value="#3B82F6"
+          style="width:100%;height:30px;padding:2px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg2);cursor:pointer">
+      </div>
+    </div>
+    <div class="mr-mft">
+      <button class="mr-btn mr-bg" id="mc-cancel">Cancelar</button>
+      <button class="mr-btn mr-bp" id="mc-save">Criar Categoria</button>
+    </div>`;
 
-    if (newName !== categoryName && messageData.categories[newName]) {
-      alert('Já existe uma categoria com este novo nome.');
-      return;
-    }
+  modal.querySelector('.mr-mc').onclick   = () => closeOverlay(ov);
+  modal.querySelector('#mc-cancel').onclick = () => closeOverlay(ov);
+  modal.querySelector('#mc-save').onclick = () => {
+    const name  = modal.querySelector('#mc-name').value.trim();
+    const icon  = modal.querySelector('#mc-icon').value.trim();
+    const color = modal.querySelector('#mc-color').value;
+    if (!name) { alert('Digite um nome.'); return; }
+    if (messageData.categories[name]) { alert('Categoria já existe.'); return; }
+    messageData.categories[name] = {
+      subcategories: {}, color,
+      icon: icon || categoryIcons[name] || categoryIcons.default
+    };
+    saveData(); refreshPanel(); closeOverlay(ov);
+    showToast('Categoria criada!');
+  };
+}
 
-    if (newName !== categoryName) {
-      // Create new category with updated name and copy subcategories
-      messageData.categories[newName] = { ...category, icon: newIcon, color: newColor };
-      // Delete old category
-      delete messageData.categories[categoryName];
+// ── Modal: Importar/Exportar ──────────────────────────────────
+function openImportExportModal() {
+  const ov = createOverlay();
+  const modal = ov.querySelector('#mr-modal-inner');
+  modal.innerHTML = `
+    <div class="mr-mhd">
+      <span class="mr-mt">Importar / Exportar</span>
+      <button class="mr-mc">✕</button>
+    </div>
+    <div class="mr-mb">
+      <p style="font-size:12px;color:var(--txt2);line-height:1.5">
+        Exporte suas mensagens como JSON para backup. Ao importar, as mensagens atuais serão substituídas.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button class="mr-btn mr-bp" id="exp-btn" style="flex:1;padding:9px">↑ Exportar JSON</button>
+        <button class="mr-btn mr-bg" id="imp-btn" style="flex:1;padding:9px">↓ Importar JSON</button>
+      </div>
+      <input type="file" id="mr-file" accept=".json" style="display:none">
+    </div>
+    <div class="mr-mft">
+      <button class="mr-btn mr-bg" id="ie-close">Fechar</button>
+    </div>`;
+
+  modal.querySelector('.mr-mc').onclick   = () => closeOverlay(ov);
+  modal.querySelector('#ie-close').onclick = () => closeOverlay(ov);
+  modal.querySelector('#exp-btn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(messageData, null, 2));
+    a.download = 'backup-mensagens.json'; a.click();
+  };
+  modal.querySelector('#imp-btn').onclick = () => modal.querySelector('#mr-file').click();
+  modal.querySelector('#mr-file').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.categories) throw new Error('Formato inválido');
+        if (confirm('Substituir mensagens atuais?')) {
+          messageData = data; saveData(); refreshPanel();
+          closeOverlay(ov); showToast('Importado com sucesso!');
+        }
+      } catch (err) { alert('Erro: ' + err.message); }
+    };
+    reader.readAsText(file); e.target.value = '';
+  };
+}
+
+
+// ── Painel de Configurações ───────────────────────────────────
+function openSettingsPanel() {
+  if (document.getElementById('mr-settings')) return;
+
+  // Injetar CSS do painel de settings
+  if (!document.getElementById('mr-settings-css')) {
+    const st = document.createElement('style');
+    st.id = 'mr-settings-css';
+    st.textContent = [
+      '#mr-settings{',
+        'position:fixed;top:50%;left:50%;',
+        'transform:translate(-50%,-50%) scale(.95);',
+        'width:700px;max-width:calc(100vw - 24px);',
+        'height:82vh;max-height:720px;',
+        'background:var(--bg,#fff);border-radius:14px;',
+        'box-shadow:0 20px 60px rgba(0,0,0,.15),0 0 0 1px var(--border,#E2E8F0);',
+        'display:flex;flex-direction:column;z-index:1000002;',
+        'opacity:0;pointer-events:none;',
+        'transition:opacity .25s ease,transform .25s ease;',
+        'font-family:Segoe UI,system-ui,sans-serif;',
+      '}',
+      '#mr-settings.visible{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:all;}',
+      '#mr-settings-backdrop{',
+        'position:fixed;inset:0;background:rgba(0,0,0,.45);',
+        'backdrop-filter:blur(3px);z-index:1000001;',
+        'opacity:0;pointer-events:none;transition:opacity .25s ease;',
+      '}',
+      '#mr-settings-backdrop.visible{opacity:1;pointer-events:all;}',
+      '#mr-settings *{box-sizing:border-box;font-family:Segoe UI,system-ui,sans-serif;}',
+      '.mst-hd{padding:14px 18px;border-bottom:1px solid var(--border,#E2E8F0);',
+        'display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}',
+      '.mst-title{font-size:15px;font-weight:700;color:var(--txt,#0F172A);}',
+      '.mst-body{display:flex;flex:1;overflow:hidden;}',
+      '.mst-sidebar{width:210px;flex-shrink:0;border-right:1px solid var(--border,#E2E8F0);display:flex;flex-direction:column;overflow:hidden;}',
+      '.mst-sidebar-hd{padding:10px 12px;font-size:11px;font-weight:700;color:var(--txt3,#94A3B8);',
+        'text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border,#E2E8F0);',
+        'display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}',
+      '.mst-sidebar-list{flex:1;overflow-y:auto;padding:6px;}',
+      '.mst-sidebar-list::-webkit-scrollbar{width:3px;}',
+      '.mst-sidebar-list::-webkit-scrollbar-thumb{background:var(--bghov,#E2E8F0);border-radius:3px;}',
+      '.mst-cat-row{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;',
+        'cursor:pointer;transition:all 150ms ease;border:1.5px solid transparent;margin-bottom:3px;}',
+      '.mst-cat-row:hover{background:var(--bg2,#F8FAFC);}',
+      '.mst-cat-row.active{background:var(--accentlt,#DBEAFE);border-color:var(--accent,#3B82F6);}',
+      '.mst-cat-row.drag-over{border-color:var(--accent,#3B82F6);background:var(--accentlt,#DBEAFE);}',
+      '.mst-cat-row.dragging{opacity:.35;}',
+      '.mst-cat-drag{cursor:grab;color:var(--txt3,#94A3B8);font-size:16px;opacity:.4;transition:opacity 150ms;}',
+      '.mst-cat-row:hover .mst-cat-drag{opacity:1;}',
+      '.mst-cat-icon{font-size:14px;flex-shrink:0;}',
+      '.mst-cat-name{font-size:12px;font-weight:500;color:var(--txt,#0F172A);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.mst-cat-count{font-size:10px;color:var(--txt3,#94A3B8);flex-shrink:0;}',
+      '.mst-main{flex:1;display:flex;flex-direction:column;overflow:hidden;}',
+      // ── Cat edit bar ──
+      '.mst-cat-edit-bar{border-bottom:1px solid var(--border,#E2E8F0);flex-shrink:0;background:var(--bg2,#F8FAFC);}',
+      '.mst-cat-edit-top{display:flex;align-items:center;gap:6px;padding:10px 14px 6px;}',
+      '.mst-cat-edit-icon{font-size:18px;flex-shrink:0;}',
+      '.mst-cat-edit-name{flex:1;min-width:0;padding:5px 8px;border:1.5px solid var(--border,#E2E8F0);border-radius:6px;font-size:12px;font-family:inherit;color:var(--txt,#0F172A);background:var(--bg,#fff);outline:none;}',
+      '.mst-cat-edit-name:focus{border-color:var(--accent,#3B82F6);}',
+      '.mst-cat-edit-emoji{width:54px;text-align:center;padding:5px 4px;border:1.5px solid var(--border,#E2E8F0);border-radius:6px;font-size:13px;font-family:inherit;color:var(--txt,#0F172A);background:var(--bg,#fff);outline:none;}',
+      '.mst-cat-edit-emoji:focus{border-color:var(--accent,#3B82F6);}',
+      '.mst-cat-edit-color{width:32px;height:28px;padding:2px;border:1.5px solid var(--border,#E2E8F0);border-radius:6px;cursor:pointer;flex-shrink:0;}',
+      '.mst-cat-edit-actions{display:flex;gap:6px;padding:0 14px 10px;}',
+      '.mst-action-btn{flex:1;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:all 150ms ease;white-space:nowrap;}',
+      '.mst-action-save{background:var(--accent,#3B82F6);color:#fff;}',
+      '.mst-action-save:hover{background:var(--accenthov,#2563EB);}',
+      '.mst-action-del{background:var(--bg3,#F1F5F9);color:var(--danger,#EF4444);border:1.5px solid var(--danger,#EF4444);}',
+      '.mst-action-del:hover{background:var(--dangerlt,#FEE2E2);}',
+      // ── Messages header ──
+      '.mst-msgs-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border,#E2E8F0);flex-shrink:0;}',
+      '.mst-msgs-header-left{display:flex;align-items:center;gap:7px;min-width:0;}',
+      '.mst-msgs-header-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}',
+      '.mst-msgs-header-title{font-size:12px;font-weight:600;color:var(--txt,#0F172A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.mst-action-new{flex:0 0 auto;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:all 150ms ease;background:var(--accent,#3B82F6);color:#fff;}',
+      '.mst-action-new:hover{background:var(--accenthov,#2563EB);}',
+      '.mst-msg-list{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:5px;}',
+      '.mst-msg-list::-webkit-scrollbar{width:3px;}',
+      '.mst-msg-list::-webkit-scrollbar-thumb{background:var(--bghov,#E2E8F0);border-radius:3px;}',
+      '.mst-msg-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;',
+        'background:var(--bg2,#F8FAFC);border:1.5px solid var(--border,#E2E8F0);transition:all 150ms ease;}',
+      '.mst-msg-row:hover{border-color:var(--accent,#3B82F6);}',
+      '.mst-msg-row.dragging{opacity:.35;}',
+      '.mst-msg-row.drag-over{border-color:var(--accent,#3B82F6);background:var(--accentlt,#DBEAFE);}',
+      '.mst-msg-drag{cursor:grab;color:var(--txt3,#94A3B8);font-size:16px;opacity:.4;transition:opacity 150ms;}',
+      '.mst-msg-row:hover .mst-msg-drag{opacity:1;}',
+      '.mst-msg-bar{width:3px;min-height:34px;border-radius:2px;flex-shrink:0;align-self:stretch;}',
+      '.mst-msg-info{flex:1;min-width:0;}',
+      '.mst-msg-name{font-size:12px;font-weight:600;color:var(--txt,#0F172A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.mst-msg-prev{font-size:11px;color:var(--txt3,#94A3B8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}',
+      '.mst-msg-acts{display:flex;gap:4px;flex-shrink:0;}',
+      '.mst-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--txt3,#94A3B8);}',
+      '.mst-empty-icon{font-size:36px;opacity:.3;}',
+      '.mst-empty-txt{font-size:12px;}',
+      // ── Unsaved changes modal ──
+      '.mst-unsaved-modal{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:14px;}',
+      '.mst-unsaved-box{background:var(--bg,#fff);border-radius:12px;padding:20px;width:280px;box-shadow:0 20px 60px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:10px;text-align:center;}',
+      '.mst-unsaved-icon{font-size:28px;}',
+      '.mst-unsaved-title{font-size:14px;font-weight:700;color:var(--txt,#0F172A);}',
+      '.mst-unsaved-msg{font-size:12px;color:var(--txt2,#475569);line-height:1.5;}',
+      '.mst-unsaved-actions{display:flex;flex-direction:column;gap:6px;margin-top:4px;}',
+      '.mst-action-discard{background:var(--bg3,#F1F5F9);color:var(--txt2,#475569);border:1.5px solid var(--border,#E2E8F0);}',
+      '.mst-action-discard:hover{background:var(--bghov,#E2E8F0);}',
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  let selectedCat = Object.keys(messageData.categories)[0] || null;
+  let dragSrcCat = null;
+  let dragSrcMsg = null;
+
+  // Verifica se há alterações não salvas na categoria atual
+  function hasUnsavedChanges() {
+    const nameInput  = sp.querySelector('#mst-cat-name-input');
+    const iconInput  = sp.querySelector('#mst-cat-icon-input');
+    const colorInput = sp.querySelector('#mst-cat-color-input');
+    if (!nameInput || !selectedCat) return false;
+    const cat = messageData.categories[selectedCat];
+    if (!cat) return false;
+    return nameInput.value.trim() !== selectedCat ||
+           iconInput.value.trim() !== (cat.icon  || '') ||
+           colorInput.value       !== (cat.color || '#3B82F6');
+  }
+
+  // Modal de confirmação de alterações não salvas
+  function confirmUnsaved(onSave, onDiscard) {
+    const existing = sp.querySelector('.mst-unsaved-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.className = 'mst-unsaved-modal';
+    const box = document.createElement('div');
+    box.className = 'mst-unsaved-box';
+    box.innerHTML = '<div class="mst-unsaved-icon">⚠️</div>'
+      + '<div class="mst-unsaved-title">Alterações não salvas</div>'
+      + '<div class="mst-unsaved-msg">Você alterou <strong>' + selectedCat + '</strong> sem salvar. O que deseja fazer?</div>';
+    const acts = document.createElement('div');
+    acts.className = 'mst-unsaved-actions';
+    const btnSave = document.createElement('button');
+    btnSave.className = 'mst-action-btn mst-action-save';
+    btnSave.textContent = '✓ Salvar Alterações';
+    const btnDiscard = document.createElement('button');
+    btnDiscard.className = 'mst-action-btn mst-action-discard';
+    btnDiscard.textContent = 'Ignorar';
+    acts.appendChild(btnSave);
+    acts.appendChild(btnDiscard);
+    box.appendChild(acts);
+    modal.appendChild(box);
+    sp.appendChild(modal);
+    btnSave.onclick    = () => { modal.remove(); onSave(); };
+    btnDiscard.onclick = () => { modal.remove(); onDiscard(); };
+  }
+
+  // Salva as alterações da categoria atual lendo direto do DOM
+  function saveCurrent() {
+    const nameInput  = sp.querySelector('#mst-cat-name-input');
+    const iconInput  = sp.querySelector('#mst-cat-icon-input');
+    const colorInput = sp.querySelector('#mst-cat-color-input');
+    if (!nameInput || !selectedCat) return;
+    const newName  = nameInput.value.trim();
+    const newIcon  = iconInput.value.trim();
+    const newColor = colorInput.value;
+    if (!newName) return;
+    if (newName !== selectedCat && messageData.categories[newName]) return;
+    const data = { ...messageData.categories[selectedCat], icon: newIcon, color: newColor };
+    if (newName !== selectedCat) {
+      const entries = Object.entries(messageData.categories);
+      const idx = entries.findIndex(([k]) => k === selectedCat);
+      entries[idx] = [newName, data];
+      messageData.categories = Object.fromEntries(entries);
+      selectedCat = newName;
     } else {
-      // Update existing category
-      messageData.categories[categoryName].icon = newIcon;
-      messageData.categories[categoryName].color = newColor;
+      messageData.categories[selectedCat].icon  = newIcon;
+      messageData.categories[selectedCat].color = newColor;
     }
-
     saveData();
-    updateCategorySelect();
-    updateItemsList();
-    document.body.removeChild(modal);
-    alert('Categoria atualizada com sucesso!');
-  };
+    refreshPanel();
+    showToast('Categoria atualizada!');
+  }
 
-  modal.onclick = (e) => {
-    if (e.target === modal) {
-      document.body.removeChild(modal);
-    }
-  };
+  // Backdrop
+  const backdrop = document.createElement('div');
+  backdrop.id = 'mr-settings-backdrop';
+  backdrop.onclick = closeSettings;
+  document.body.appendChild(backdrop);
 
-  content.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.target.tagName !== 'TEXTAREA' || e.ctrlKey)) {
-      e.preventDefault();
-      content.querySelector('#save-edit').click();
-    }
-    if (e.key === 'Escape') {
-      content.querySelector('#cancel-edit').click();
-    }
-  });
-}
-
-function editSubcategory(categoryName, subcategoryName, currentMessage, currentColor) {
-  const modal = document.createElement('div');
-  modal.id = 'edit-subcategory-modal';
-  modal.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10003;
-  `;
-
-  const content = document.createElement('div');
-  content.style.cssText = `
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-    width: 500px;
-    max-width: 90%;
-  `;
-
-  content.innerHTML = `
-    <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">Editar Subcategoria: ${subcategoryName}</h3>
-    <div style="margin-bottom: 10px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Novo Nome:</label>
-      <input type="text" id="edit-subcategory-name" value="${subcategoryName}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+  // Panel
+  const sp = document.createElement('div');
+  sp.id = 'mr-settings';
+  if (isDarkTheme) sp.classList.add('dark');
+  sp.innerHTML = `
+    <div class="mst-hd">
+      <span class="mst-title">⚙️ Configurações — Categorias & Mensagens</span>
+      <button class="mr-mc" id="mst-close">✕</button>
     </div>
-    <div style="margin-bottom: 10px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Cor da Linha Lateral:</label>
-      <input type="color" id="edit-subcategory-color" value="${currentColor}" style="width: 100%; height: 36px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
-    </div>
-    <div style="margin-bottom: 20px;">
-      <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nova Mensagem:</label>
-      <textarea id="edit-subcategory-message" style="width: 100%; height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${currentMessage}</textarea>
-    </div>
-    <div style="text-align: right;">
-      <button id="cancel-edit" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancelar</button>
-      <button id="save-edit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Salvar</button>
+    <div class="mst-body">
+      <div class="mst-sidebar">
+        <div class="mst-sidebar-hd">
+          <span>Categorias</span>
+          <button class="mr-btn mr-bp" id="mst-add-cat" style="padding:2px 8px;font-size:10px">+ Nova</button>
+        </div>
+        <div class="mst-sidebar-list" id="mst-cat-list"></div>
+      </div>
+      <div class="mst-main" id="mst-main">
+        <div class="mst-empty"><div class="mst-empty-icon">📂</div><div class="mst-empty-txt">Selecione uma categoria</div></div>
+      </div>
     </div>
   `;
+  sp.addEventListener('click', e => e.stopPropagation());
+  document.body.appendChild(sp);
 
-  modal.appendChild(content);
-  document.body.appendChild(modal);
+  // Copia vars de tema
+  const panel = document.getElementById('mr-panel');
+  if (panel) {
+    const cs = getComputedStyle(panel);
+    ['--bg','--bg2','--bg3','--bghov','--txt','--txt2','--txt3','--border',
+     '--accent','--accenthov','--accentlt','--success','--danger','--dangerlt',
+     '--sh-sm','--sh-md','--sh-lg','--r-sm','--r-md','--r-lg','--r-full','--tr']
+      .forEach(v => sp.style.setProperty(v, cs.getPropertyValue(v)));
+  }
 
-  document.getElementById('cancel-edit').onclick = () => {
-    document.body.removeChild(modal);
+  sp.querySelector('#mst-close').onclick = closeSettings;
+  sp.querySelector('#mst-add-cat').onclick = () => {
+    closeSettings();
+    openCatModal();
   };
 
-  document.getElementById('save-edit').onclick = () => {
-    const newName = document.getElementById('edit-subcategory-name').value.trim();
-    const newMessage = document.getElementById('edit-subcategory-message').value.trim();
-    const newColor = document.getElementById('edit-subcategory-color').value;
+  setTimeout(() => { backdrop.classList.add('visible'); sp.classList.add('visible'); }, 10);
 
-    if (!newName) {
-      alert('O nome da subcategoria não pode ser vazio.');
+  // ── Render sidebar de categorias ──
+  function renderSidebar() {
+    const list = sp.querySelector('#mst-cat-list');
+    list.innerHTML = '';
+    Object.entries(messageData.categories).forEach(([catName, cat]) => {
+      const count = Object.keys(cat.subcategories || {}).length;
+      const color = cat.color || '#3B82F6';
+      const row = document.createElement('div');
+      row.className = 'mst-cat-row' + (catName === selectedCat ? ' active' : '');
+      row.dataset.cat = catName;
+      row.draggable = true;
+      row.innerHTML = `
+        <span class="mst-cat-drag" title="Arrastar para reordenar">⠿</span>
+        <span class="mst-cat-icon" style="color:${color}">${cat.icon || '📂'}</span>
+        <span class="mst-cat-name">${catName}</span>
+        <span class="mst-cat-count">${count}</span>
+      `;
+      row.onclick = (e) => {
+        if (e.target.classList.contains('mst-cat-drag')) return;
+        if (catName === selectedCat) return;
+        const switchTo = catName;
+        if (hasUnsavedChanges()) {
+          confirmUnsaved(
+            () => { // Salvar
+              saveCurrent();
+              selectedCat = switchTo;
+              renderSidebar();
+              renderMain();
+            },
+            () => { // Ignorar
+              selectedCat = switchTo;
+              renderSidebar();
+              renderMain();
+            }
+          );
+        } else {
+          selectedCat = switchTo;
+          renderSidebar();
+          renderMain();
+        }
+      };
+
+      // Drag & drop categorias
+      row.addEventListener('dragstart', e => {
+        dragSrcCat = catName;
+        setTimeout(() => row.classList.add('dragging'), 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => row.classList.remove('dragging'));
+      row.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (dragSrcCat && dragSrcCat !== catName) row.classList.add('drag-over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        if (!dragSrcCat || dragSrcCat === catName) return;
+        // Reordena
+        const entries = Object.entries(messageData.categories);
+        const fromIdx = entries.findIndex(([k]) => k === dragSrcCat);
+        const toIdx   = entries.findIndex(([k]) => k === catName);
+        const [moved] = entries.splice(fromIdx, 1);
+        entries.splice(toIdx, 0, moved);
+        messageData.categories = Object.fromEntries(entries);
+        saveData(); refreshPanel(); renderSidebar();
+        dragSrcCat = null;
+      });
+
+      list.appendChild(row);
+    });
+  }
+
+  // ── Render painel principal (mensagens da cat selecionada) ──
+  function renderMain() {
+    const main = sp.querySelector('#mst-main'); // eslint-disable-line no-shadow
+    if (!selectedCat || !messageData.categories[selectedCat]) {
+      main.innerHTML = `<div class="mst-empty"><div class="mst-empty-icon">📂</div><div class="mst-empty-txt">Selecione uma categoria</div></div>`;
       return;
     }
-    if (!newMessage) {
-      alert('A mensagem da subcategoria não pode ser vazia.');
-      return;
-    }
+    const cat = messageData.categories[selectedCat];
+    const color = cat.color || '#3B82F6';
 
-    if (newName !== subcategoryName && messageData.categories[categoryName].subcategories[newName]) {
-      alert('Já existe uma subcategoria com este novo nome.');
-      return;
-    }
+    main.innerHTML = `
+      <div class="mst-cat-edit-bar">
+        <div class="mst-cat-edit-top">
+          <span class="mst-cat-edit-icon">${cat.icon || '📂'}</span>
+          <input id="mst-cat-name-input" class="mst-cat-edit-name" value="${escapeHtml(selectedCat)}" placeholder="Nome">
+          <input id="mst-cat-icon-input" class="mst-cat-edit-emoji" value="${escapeHtml(cat.icon || '')}" placeholder="Ícone">
+          <input type="color" id="mst-cat-color-input" class="mst-cat-edit-color" value="${color}" title="Cor">
+        </div>
+        <div class="mst-cat-edit-actions">
+          <button class="mst-action-btn mst-action-save" id="mst-cat-save">✓ Salvar</button>
+          <button class="mst-action-btn mst-action-del" id="mst-cat-del" title="Excluir categoria">🗑 Excluir</button>
+        </div>
+      </div>
+      <div class="mst-msgs-header">
+        <div class="mst-msgs-header-left">
+          <span class="mst-msgs-header-dot" style="background:${color}"></span>
+          <span class="mst-msgs-header-title">Mensagens em <strong>${selectedCat}</strong></span>
+        </div>
+        <button class="mst-action-btn mst-action-new" id="mst-add-msg">+ Nova</button>
+      </div>
+      <div class="mst-msg-list" id="mst-msg-list"></div>
+    `;
 
-    // Update the subcategory
-    const oldSubcategoryData = messageData.categories[categoryName].subcategories[subcategoryName];
-    if (newName !== subcategoryName) {
-        delete messageData.categories[categoryName].subcategories[subcategoryName];
-    }
-    messageData.categories[categoryName].subcategories[newName] = {
-      message: newMessage,
-      color: newColor
+    // Salvar edição da categoria
+    main.querySelector('#mst-cat-save').onclick = () => {
+      const newName  = main.querySelector('#mst-cat-name-input').value.trim();
+      const newIcon  = main.querySelector('#mst-cat-icon-input').value.trim();
+      const newColor = main.querySelector('#mst-cat-color-input').value;
+      if (!newName) { alert('Nome não pode ser vazio.'); return; }
+      if (newName !== selectedCat && messageData.categories[newName]) { alert('Já existe uma categoria com esse nome.'); return; }
+      const data = { ...messageData.categories[selectedCat], icon: newIcon, color: newColor };
+      if (newName !== selectedCat) {
+        const entries = Object.entries(messageData.categories);
+        const idx = entries.findIndex(([k]) => k === selectedCat);
+        entries[idx] = [newName, data];
+        messageData.categories = Object.fromEntries(entries);
+        selectedCat = newName;
+      } else {
+        messageData.categories[selectedCat].icon  = newIcon;
+        messageData.categories[selectedCat].color = newColor;
+      }
+      saveData(); refreshPanel(); renderSidebar(); renderMain();
+      showToast('Categoria atualizada!');
     };
 
-    saveData();
-    updateItemsList();
-    document.body.removeChild(modal);
-    alert('Subcategoria atualizada com sucesso!');
-  };
+    // Excluir categoria
+    main.querySelector('#mst-cat-del').onclick = () => {
+      if (!confirm(`Excluir a categoria "${selectedCat}" e todas as suas mensagens?`)) return;
+      delete messageData.categories[selectedCat];
+      selectedCat = Object.keys(messageData.categories)[0] || null;
+      saveData(); refreshPanel(); renderSidebar(); renderMain();
+      showToast('Categoria excluída.');
+    };
 
-  modal.onclick = (e) => {
-    if (e.target === modal) {
-      document.body.removeChild(modal);
-    }
-  };
+    main.querySelector('#mst-add-msg').onclick = () => {
+      openMessageModal(null, null, selectedCat, true, () => renderMsgList());
+    };
 
-  content.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.target.tagName !== 'TEXTAREA' || e.ctrlKey)) {
-      e.preventDefault();
-      content.querySelector('#save-edit').click();
+    renderMsgList();
+  }
+
+  function renderMsgList() {
+    const list = sp.querySelector('#mst-msg-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const subs = Object.entries(messageData.categories[selectedCat]?.subcategories || {});
+    if (subs.length === 0) {
+      list.innerHTML = `<div class="mst-empty" style="padding:32px"><div class="mst-empty-icon">💬</div><div class="mst-empty-txt">Nenhuma mensagem nesta categoria</div></div>`;
+      return;
     }
-    if (e.key === 'Escape') {
-      content.querySelector('#cancel-edit').click();
-    }
+    subs.forEach(([subName, subItem]) => {
+      const msg   = typeof subItem === 'string' ? subItem : subItem.message;
+      const color = typeof subItem === 'object' && subItem.color ? subItem.color : '#3B82F6';
+
+      const row = document.createElement('div');
+      row.className = 'mst-msg-row';
+      row.dataset.sub = subName;
+      row.draggable = true;
+      row.innerHTML = `
+        <span class="mst-msg-drag" title="Arrastar para reordenar">⠿</span>
+        <div class="mst-msg-bar" style="background:${color}"></div>
+        <div class="mst-msg-info">
+          <div class="mst-msg-name">${escapeHtml(subName)}</div>
+          <div class="mst-msg-prev">${escapeHtml(msg)}</div>
+        </div>
+        <div class="mst-msg-actions">
+          <button class="mr-btn mr-bg mst-edit-msg" style="padding:3px 9px;font-size:10px">Editar</button>
+          <button class="mr-btn mr-bd mst-del-msg" style="padding:3px 8px;font-size:10px">🗑</button>
+        </div>
+      `;
+
+      // Editar mensagem
+      row.querySelector('.mst-edit-msg').onclick = () => {
+        openMessageModal(selectedCat, subName, null, true, () => renderMsgList());
+      };
+
+      // Excluir mensagem
+      row.querySelector('.mst-del-msg').onclick = () => {
+        if (!confirm(`Excluir a mensagem "${subName}"?`)) return;
+        delete messageData.categories[selectedCat].subcategories[subName];
+        saveData(); refreshPanel(); renderMsgList();
+        showToast('Mensagem excluída.');
+      };
+
+      // Drag & drop mensagens
+      row.addEventListener('dragstart', e => {
+        dragSrcMsg = subName;
+        setTimeout(() => row.classList.add('dragging'), 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => row.classList.remove('dragging'));
+      row.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (dragSrcMsg && dragSrcMsg !== subName) row.classList.add('drag-over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        if (!dragSrcMsg || dragSrcMsg === subName) return;
+        const entries = Object.entries(messageData.categories[selectedCat].subcategories);
+        const fromIdx = entries.findIndex(([k]) => k === dragSrcMsg);
+        const toIdx   = entries.findIndex(([k]) => k === subName);
+        const [moved] = entries.splice(fromIdx, 1);
+        entries.splice(toIdx, 0, moved);
+        messageData.categories[selectedCat].subcategories = Object.fromEntries(entries);
+        saveData(); refreshPanel(); renderMsgList();
+        dragSrcMsg = null;
+      });
+
+      list.appendChild(row);
+    });
+  }
+
+  function closeSettings() {
+    backdrop.classList.remove('visible');
+    sp.classList.remove('visible');
+    setTimeout(() => { backdrop.remove(); sp.remove(); }, 250);
+  }
+
+  renderSidebar();
+  renderMain();
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function refreshPanel() { renderCatTabs(); renderCards(); }
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── FAB ───────────────────────────────────────────────────────
+function renderFAB() {
+  if (document.getElementById('mr-fab')) return;
+  const fab = document.createElement('button');
+  fab.id = 'mr-fab';
+  fab.innerHTML = `<div id="mr-fab-drag" title="Arrastar">⋮</div>✉️`;
+  fab.style.cssText = `top:${buttonPosition.top};left:${buttonPosition.left};bottom:${buttonPosition.bottom};right:${buttonPosition.right};`;
+
+  let dragging = false, ox = 0, oy = 0;
+  const drag = fab.querySelector('#mr-fab-drag');
+  drag.onmousedown = e => {
+    e.stopPropagation(); dragging = true;
+    ox = e.clientX - fab.getBoundingClientRect().left;
+    oy = e.clientY - fab.getBoundingClientRect().top;
+    document.onmousemove = e => {
+      if (!dragging) return;
+      const nx = Math.max(0, Math.min(e.clientX - ox, window.innerWidth  - fab.offsetWidth));
+      const ny = Math.max(0, Math.min(e.clientY - oy, window.innerHeight - fab.offsetHeight));
+      fab.style.left = nx+'px'; fab.style.top = ny+'px';
+      fab.style.right = 'auto'; fab.style.bottom = 'auto';
+    };
+    document.onmouseup = e => {
+      dragging = false;
+      const r = fab.getBoundingClientRect();
+      saveButtonPosition(r.top, r.left);
+      const panel = document.getElementById('mr-panel');
+      if (panel?.classList.contains('visible')) positionPanel(panel);
+      document.onmousemove = null; document.onmouseup = null;
+    };
+  };
+  fab.onclick = e => { if (!dragging) togglePanel(); };
+  document.body.appendChild(fab);
+
+  document.addEventListener('click', e => {
+    const panel = document.getElementById('mr-panel');
+    const f     = document.getElementById('mr-fab');
+    if (!panel?.classList.contains('visible')) return;
+    // Não fecha se há um overlay/modal aberto
+    if (document.querySelector('.mr-ov.active')) return;
+    // Não fecha se o clique foi dentro do painel ou no FAB
+    if (!panel.contains(e.target) && e.target !== f && !f?.contains(e.target))
+      hidePanel();
   });
 }
 
-function deleteCategory(categoryName) {
-  if (confirm(`Tem certeza que deseja excluir a categoria "${categoryName}" e todas suas subcategorias?`)) {
-    delete messageData.categories[categoryName];
-    saveData();
-    updateCategorySelect();
-    updateItemsList();
-  }
+// ── Toast ─────────────────────────────────────────────────────
+function renderToast() {
+  if (document.getElementById('mr-toast')) return;
+  const t = document.createElement('div');
+  t.id = 'mr-toast';
+  t.innerHTML = `<span class="mr-ticon">✓</span><span class="mr-tmsg">Mensagem inserida!</span>`;
+  document.body.appendChild(t);
 }
 
-function deleteSubcategory(categoryName, subcategoryName) {
-  if (confirm(`Tem certeza que deseja excluir a subcategoria "${subcategoryName}"?`)) {
-    delete messageData.categories[categoryName].subcategories[subcategoryName];
-    saveData();
-    updateItemsList();
-  }
-}
+// ── Bootstrap: importa do GitHub na primeira vez ─────────────
+// Troque pela URL raw do seu repositório GitHub:
+const BACKUP_URL = 'https://raw.githubusercontent.com/ASolha/passo-largo/main/backup-mensagens.json';
+const IMPORT_FLAG = 'mr-auto-imported';
 
-function clearAllData() {
-  if (confirm('Tem certeza que deseja excluir TODAS as suas mensagens? Esta ação não pode ser desfeita.')) {
-    messageData.categories = {};
-    saveData();
-    updateCategorySelect();
-    updateItemsList();
-    alert('Todos os dados foram limpos!');
-  }
-}
+async function bootstrap() {
+  loadData();
 
-// Initial rendering when the content script is injected
-loadData(); // Load data initially
+  // Só importa se: nunca importou antes E não tem nenhuma categoria salva
+  const alreadyImported = localStorage.getItem(IMPORT_FLAG);
+  const hasData = Object.keys(messageData.categories).length > 0;
 
-// Verifica se há mensagens padrão para aplicar (primeira instalação)
-chrome.runtime.sendMessage({ action: 'get_default_messages' }, (res) => {
-  if (res && res.data) {
+  if (!alreadyImported && !hasData) {
     try {
-      const imported = JSON.parse(res.data);
-      if (imported.categories && Object.keys(messageData.categories).length === 0) {
-        // Só aplica se o usuário ainda não tem mensagens salvas
+      const res = await fetch(BACKUP_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const imported = await res.json();
+      if (imported && imported.categories && Object.keys(imported.categories).length > 0) {
         messageData = imported;
         saveData();
-        console.log('[Passo-Largo] Mensagens padrão aplicadas com sucesso!');
+        localStorage.setItem(IMPORT_FLAG, '1');
+        console.log('[Passo-Largo] Backup importado do GitHub com sucesso!');
       }
-    } catch(e) {
-      console.warn('[Passo-Largo] Erro ao aplicar mensagens padrão:', e.message);
+    } catch (e) {
+      console.warn('[Passo-Largo] Nao foi possivel importar backup:', e.message);
+      // Falha silenciosa — usuario pode importar manualmente
     }
   }
-  // Renderiza o botão depois de verificar (com ou sem template)
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', renderButton);
-  } else {
-    renderButton();
-  }
-});
 
-// Listen for messages from the popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "openEditor") {
-    openEditor();
-  }
+  renderToast();
+  renderFAB();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+function init() { bootstrap(); }
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+chrome.runtime.onMessage.addListener(request => {
+  if (request.action === 'openEditor') showPanel();
 });
