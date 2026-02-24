@@ -161,6 +161,10 @@ function buildPanel() {
   positionPanel(panel);
 
   panel.innerHTML = `
+    <div class="mr-cn-wrap">
+      <nav class="mr-cn" id="mr-cn"></nav>
+    </div>
+    <div class="mr-col">
     <div class="mr-hd">
       <div class="mr-hd-l">
         <span class="mr-title">Passo Largo</span>
@@ -179,11 +183,6 @@ function buildPanel() {
         <input type="text" id="mr-si" placeholder="Buscar mensagens..." autocomplete="off">
       </div>
     </div>
-    <div class="mr-cn-wrap">
-      <button class="mr-cn-arrow mr-cn-arrow-l" id="mr-cn-left">&#8249;</button>
-      <nav class="mr-cn" id="mr-cn"></nav>
-      <button class="mr-cn-arrow mr-cn-arrow-r" id="mr-cn-right">&#8250;</button>
-    </div>
     <div class="mr-c" id="mr-c"></div>
     <div class="mr-ft">
       <button class="mr-bnew" id="mr-bnew">
@@ -200,6 +199,7 @@ function buildPanel() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.3.07-.62.07-.96s-.03-.66-.07-1l2.15-1.68c.19-.15.24-.42.12-.64l-2.04-3.53c-.12-.22-.39-.3-.61-.22l-2.53 1.02c-.53-.4-1.1-.74-1.72-.99L14.5 2.42A.49.49 0 0014 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.59-1.72.99L4.88 5.08c-.23-.09-.49 0-.61.22L2.23 8.83c-.13.22-.07.49.12.64L4.5 11.15c-.04.34-.07.67-.07 1s.03.65.07.96L2.35 14.8c-.19.15-.24.42-.12.64l2.04 3.53c.12.22.39.3.61.22l2.53-1.02c.53.4 1.1.74 1.72.99l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.59 1.72-.99l2.53 1.02c.23.09.49 0 .61-.22l2.04-3.53c.12-.22.07-.49-.12-.64l-2.15-1.69z"/></svg>
         </button>
       </div>
+    </div>
     </div>
   `;
 
@@ -231,10 +231,7 @@ function buildPanel() {
 
   panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
   panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
-  navEl.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    smoothScrollNav((e.deltaY + e.deltaX) * 1.1);
-  }, { passive: false });
+
   panel.querySelector('#mr-tt').onclick = () => {
     isDarkTheme = !isDarkTheme;
     panel.classList.toggle('dark', isDarkTheme);
@@ -255,17 +252,30 @@ function buildPanel() {
 
 function positionPanel(panel) {
   const fab = document.getElementById('mr-fab');
-  if (!fab) { panel.style.bottom = '80px'; panel.style.right = '20px'; return; }
-  const rect = fab.getBoundingClientRect();
   const ww = window.innerWidth, wh = window.innerHeight;
-  const pw = 360, ph = 570;
-  let left = rect.left - pw - 10;
-  if (left < 8) left = rect.right + 10;
+  // Use actual rendered size or fallback
+  const pw = panel.offsetWidth  || 340;
+  const ph = Math.min(panel.offsetHeight || 680, wh - 24);
+  panel.style.maxHeight = (wh - 24) + 'px';
+  if (!fab) {
+    panel.style.bottom = '80px'; panel.style.right = '20px';
+    panel.style.top = 'auto'; panel.style.left = 'auto';
+    return;
+  }
+  const rect = fab.getBoundingClientRect();
+  // Try left of FAB first, then right
+  let left = rect.left - pw - 12;
+  if (left < 8) left = rect.right + 12;
   if (left + pw > ww - 8) left = ww - pw - 8;
+  if (left < 8) left = 8;
+  // Align top with FAB, clamp to viewport
   let top = rect.top;
   if (top + ph > wh - 8) top = wh - ph - 8;
   if (top < 8) top = 8;
-  panel.style.left = left+'px'; panel.style.top = top+'px';
+  panel.style.left = left + 'px';
+  panel.style.top  = top  + 'px';
+  panel.style.bottom = 'auto';
+  panel.style.right  = 'auto';
 }
 
 // ── Category tabs ─────────────────────────────────────────────
@@ -279,7 +289,7 @@ function renderCatTabs() {
 
   const allTab = document.createElement('div');
   allTab.className = 'mr-ct' + (activeCategory === null ? ' active' : '');
-  allTab.innerHTML = `<span class="mr-ct-name">Todas</span><span class="mr-ccnt">${total}</span>`;
+  allTab.innerHTML = `<span class="mr-ct-icon">🗂</span><span class="mr-ct-name">Todas</span>`;
   allTab.onclick = (e) => { e.stopPropagation(); activeCategory = null; renderCatTabs(); renderCards(); };
   nav.appendChild(allTab);
 
@@ -288,11 +298,7 @@ function renderCatTabs() {
     const color = getCategoryColor(catName, cat);
     const tab = document.createElement('div');
     tab.className = 'mr-ct' + (activeCategory === catName ? ' active' : '');
-    tab.innerHTML = `
-      <span class="mr-cdot" style="background:${activeCategory === catName ? 'rgba(255,255,255,.5)' : color}"></span>
-      <span class="mr-ct-name">${cat.icon || categoryIcons[catName] || categoryIcons.default} ${catName}</span>
-      <span class="mr-ccnt">${count}</span>
-    `;
+    tab.innerHTML = `<span class="mr-ct-icon">${cat.icon || categoryIcons[catName] || categoryIcons.default}</span><span class="mr-ct-name">${catName}</span>`;
     tab.onclick = (e) => { e.stopPropagation(); activeCategory = catName; renderCatTabs(); renderCards(); };
     nav.appendChild(tab);
   });
@@ -317,22 +323,15 @@ function renderCards() {
   }
 
   msgs.forEach(({ catName, subName, message, color }) => {
-    const vars = extractVarTags(message);
     const card = document.createElement('div');
     card.className = 'mr-card';
     card.innerHTML = `
       <div class="mr-ci">
         <div class="mr-cbar" style="background:${color}"></div>
         <div class="mr-cbody">
-          <div class="mr-ctop">
-            <span class="mr-cname">${subName}</span>
-            <span class="mr-ccat">${catName}</span>
-          </div>
+          <span class="mr-cname">${subName}</span>
           <div class="mr-cprev">${highlightVars(message)}</div>
           <div class="mr-cft">
-            <div class="mr-ctags">
-              ${vars.map(v=>`<span class="mr-vtag">${v.replace(/[\[\]]/g,'')}</span>`).join('')}
-            </div>
             <div class="mr-cact">
               <button class="mr-btn mr-bg mr-edit">Editar</button>
               <button class="mr-btn mr-bp mr-use">Usar</button>
@@ -722,6 +721,10 @@ function buildPanel() {
   positionPanel(panel);
 
   panel.innerHTML = `
+    <div class="mr-cn-wrap">
+      <nav class="mr-cn" id="mr-cn"></nav>
+    </div>
+    <div class="mr-col">
     <div class="mr-hd">
       <div class="mr-hd-l">
         <span class="mr-title">Passo Largo</span>
@@ -740,11 +743,6 @@ function buildPanel() {
         <input type="text" id="mr-si" placeholder="Buscar mensagens..." autocomplete="off">
       </div>
     </div>
-    <div class="mr-cn-wrap">
-      <button class="mr-cn-arrow mr-cn-arrow-l" id="mr-cn-left">&#8249;</button>
-      <nav class="mr-cn" id="mr-cn"></nav>
-      <button class="mr-cn-arrow mr-cn-arrow-r" id="mr-cn-right">&#8250;</button>
-    </div>
     <div class="mr-c" id="mr-c"></div>
     <div class="mr-ft">
       <button class="mr-bnew" id="mr-bnew">
@@ -761,6 +759,7 @@ function buildPanel() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.3.07-.62.07-.96s-.03-.66-.07-1l2.15-1.68c.19-.15.24-.42.12-.64l-2.04-3.53c-.12-.22-.39-.3-.61-.22l-2.53 1.02c-.53-.4-1.1-.74-1.72-.99L14.5 2.42A.49.49 0 0014 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.59-1.72.99L4.88 5.08c-.23-.09-.49 0-.61.22L2.23 8.83c-.13.22-.07.49.12.64L4.5 11.15c-.04.34-.07.67-.07 1s.03.65.07.96L2.35 14.8c-.19.15-.24.42-.12.64l2.04 3.53c.12.22.39.3.61.22l2.53-1.02c.53.4 1.1.74 1.72.99l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.59 1.72-.99l2.53 1.02c.23.09.49 0 .61-.22l2.04-3.53c.12-.22.07-.49-.12-.64l-2.15-1.69z"/></svg>
         </button>
       </div>
+    </div>
     </div>
   `;
 
@@ -792,10 +791,7 @@ function buildPanel() {
 
   panel.querySelector('#mr-cn-left').onclick  = (e) => { e.stopPropagation(); smoothScrollNav(-120); };
   panel.querySelector('#mr-cn-right').onclick = (e) => { e.stopPropagation(); smoothScrollNav(120); };
-  navEl.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    smoothScrollNav((e.deltaY + e.deltaX) * 1.1);
-  }, { passive: false });
+
   panel.querySelector('#mr-tt').onclick = () => {
     isDarkTheme = !isDarkTheme;
     panel.classList.toggle('dark', isDarkTheme);
@@ -816,17 +812,30 @@ function buildPanel() {
 
 function positionPanel(panel) {
   const fab = document.getElementById('mr-fab');
-  if (!fab) { panel.style.bottom = '80px'; panel.style.right = '20px'; return; }
-  const rect = fab.getBoundingClientRect();
   const ww = window.innerWidth, wh = window.innerHeight;
-  const pw = 360, ph = 570;
-  let left = rect.left - pw - 10;
-  if (left < 8) left = rect.right + 10;
+  // Use actual rendered size or fallback
+  const pw = panel.offsetWidth  || 340;
+  const ph = Math.min(panel.offsetHeight || 680, wh - 24);
+  panel.style.maxHeight = (wh - 24) + 'px';
+  if (!fab) {
+    panel.style.bottom = '80px'; panel.style.right = '20px';
+    panel.style.top = 'auto'; panel.style.left = 'auto';
+    return;
+  }
+  const rect = fab.getBoundingClientRect();
+  // Try left of FAB first, then right
+  let left = rect.left - pw - 12;
+  if (left < 8) left = rect.right + 12;
   if (left + pw > ww - 8) left = ww - pw - 8;
+  if (left < 8) left = 8;
+  // Align top with FAB, clamp to viewport
   let top = rect.top;
   if (top + ph > wh - 8) top = wh - ph - 8;
   if (top < 8) top = 8;
-  panel.style.left = left+'px'; panel.style.top = top+'px';
+  panel.style.left = left + 'px';
+  panel.style.top  = top  + 'px';
+  panel.style.bottom = 'auto';
+  panel.style.right  = 'auto';
 }
 
 // ── Category tabs ─────────────────────────────────────────────
@@ -840,7 +849,7 @@ function renderCatTabs() {
 
   const allTab = document.createElement('div');
   allTab.className = 'mr-ct' + (activeCategory === null ? ' active' : '');
-  allTab.innerHTML = `<span class="mr-ct-name">Todas</span><span class="mr-ccnt">${total}</span>`;
+  allTab.innerHTML = `<span class="mr-ct-icon">🗂</span><span class="mr-ct-name">Todas</span>`;
   allTab.onclick = (e) => { e.stopPropagation(); activeCategory = null; renderCatTabs(); renderCards(); };
   nav.appendChild(allTab);
 
@@ -849,11 +858,7 @@ function renderCatTabs() {
     const color = getCategoryColor(catName, cat);
     const tab = document.createElement('div');
     tab.className = 'mr-ct' + (activeCategory === catName ? ' active' : '');
-    tab.innerHTML = `
-      <span class="mr-cdot" style="background:${activeCategory === catName ? 'rgba(255,255,255,.5)' : color}"></span>
-      <span class="mr-ct-name">${cat.icon || categoryIcons[catName] || categoryIcons.default} ${catName}</span>
-      <span class="mr-ccnt">${count}</span>
-    `;
+    tab.innerHTML = `<span class="mr-ct-icon">${cat.icon || categoryIcons[catName] || categoryIcons.default}</span><span class="mr-ct-name">${catName}</span>`;
     tab.onclick = (e) => { e.stopPropagation(); activeCategory = catName; renderCatTabs(); renderCards(); };
     nav.appendChild(tab);
   });
@@ -878,22 +883,15 @@ function renderCards() {
   }
 
   msgs.forEach(({ catName, subName, message, color }) => {
-    const vars = extractVarTags(message);
     const card = document.createElement('div');
     card.className = 'mr-card';
     card.innerHTML = `
       <div class="mr-ci">
         <div class="mr-cbar" style="background:${color}"></div>
         <div class="mr-cbody">
-          <div class="mr-ctop">
-            <span class="mr-cname">${subName}</span>
-            <span class="mr-ccat">${catName}</span>
-          </div>
+          <span class="mr-cname">${subName}</span>
           <div class="mr-cprev">${highlightVars(message)}</div>
           <div class="mr-cft">
-            <div class="mr-ctags">
-              ${vars.map(v=>`<span class="mr-vtag">${v.replace(/[\[\]]/g,'')}</span>`).join('')}
-            </div>
             <div class="mr-cact">
               <button class="mr-btn mr-bg mr-edit">Editar</button>
               <button class="mr-btn mr-bp mr-use">Usar</button>
